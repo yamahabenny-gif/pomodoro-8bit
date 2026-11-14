@@ -5,6 +5,7 @@ import { clear, load, save } from "./timer/persist.js";
 import { createHeroine } from "./game/heroine/heroine.js";
 import { createForest } from "./game/scene/forest.js";
 import { createDirector } from "./game/director/director.js";
+import { loadSavedSession } from "./game/director/session.js";
 import { createSfx } from "./audio/sfx.js";
 import { createUI } from "./ui/ui.js";
 
@@ -25,12 +26,24 @@ function timerSpeed() {
   return Number.isFinite(speed) && speed > 0 ? speed : 1;
 }
 
-function startSession(preset) {
-  sfx.unlock();
-  sfx.requestPermission?.();
-  sfx.play("click");
+function unlockOnFirstGesture() {
+  const handleGesture = () => {
+    document.removeEventListener("pointerdown", handleGesture);
+    document.removeEventListener("keydown", handleGesture);
+    sfx.unlock();
+    sfx.requestPermission?.();
+  };
+  document.addEventListener("pointerdown", handleGesture, { once: true, passive: true });
+  document.addEventListener("keydown", handleGesture, { once: true });
+}
 
-  const restored = load(preset);
+function startSession(preset, restored = load(preset), { userGesture = true } = {}) {
+  if (userGesture) {
+    sfx.unlock();
+    sfx.requestPermission?.();
+    sfx.play("click");
+  }
+
   const session = createTimer.restore(preset, restored, { speed: timerSpeed() });
   const forest = createForest();
   const heroine = createHeroine({ x: 112, y: GROUND_Y });
@@ -69,8 +82,14 @@ ui = createUI(document.getElementById("ui"), {
   onReset: resetSession,
   onMute: (muted) => sfx.setMuted(muted),
 });
-ui.showMenu();
-sfx.ambience(null);
+const savedSession = loadSavedSession(PRESETS, load);
+if (savedSession) {
+  startSession(savedSession.preset, savedSession.data, { userGesture: false });
+  unlockOnFirstGesture();
+} else {
+  ui.showMenu();
+  sfx.ambience(null);
+}
 
 startLoop((dt) => {
   timer?.tick();

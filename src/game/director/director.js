@@ -133,7 +133,13 @@ export function createDirector({ stage, forest, heroine, timer, sfx }) {
       }
       stateTime = 0;
       sfx?.ambience?.("forest");
-      if (announce) sfx?.play?.("phaseFocus");
+      if (announce) {
+        sfx?.play?.("phaseFocus");
+        if (returningFromBreak) {
+          const minutes = Math.max(1, Math.round(next.totalMs / 60_000));
+          sfx?.notify?.("Pause vorbei", `Kampf: ${minutes} Minuten.`);
+        }
+      }
     } else {
       playIfNeeded("walk");
       encounterState = "toCamp";
