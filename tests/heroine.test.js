@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createFrame } from "pixelfx/core/index.js";
+import { createFrame, hex } from "pixelfx/core/index.js";
 import { createHeroine } from "../src/game/heroine/heroine.js";
 
 const ANIMS = ["idle", "walk", "attack1", "attack2", "attack3", "hurt", "victory", "sitDown", "sit", "standUp"];
@@ -41,5 +41,25 @@ describe("heroine", () => {
     for (let i = 0; i < 10; i++) heroine.update(0.1);
     expect(heroine.anim).toBe("sit");
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the three attacks distinct contact silhouettes", () => {
+    const pixels = ["attack1", "attack2", "attack3"].map((name) => {
+      const heroine = createHeroine({ x: 120, y: 120 }), frame = createFrame(320, 180);
+      heroine.play(name);
+      heroine.update(0.4);
+      heroine.draw(frame);
+      return Array.from(frame.color).join(",");
+    });
+    expect(new Set(pixels).size).toBe(3);
+  });
+
+  it("draws the stump seat and leaves the sword beside a seated heroine", () => {
+    const heroine = createHeroine({ x: 120, y: 120 }), frame = createFrame(320, 180);
+    heroine.play("sit");
+    heroine.draw(frame);
+    const pixels = Array.from(frame.color);
+    expect(pixels.filter((pixel) => pixel === (hex("#754a35") >>> 0)).length).toBeGreaterThan(0);
+    expect(pixels.filter((pixel) => pixel === (hex("#d8e6dc") >>> 0)).length).toBeGreaterThan(0);
   });
 });
