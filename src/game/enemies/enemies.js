@@ -25,44 +25,71 @@ const INK = "#17121f";
 const palettes = {
   gnome: { ".": null, i: INK, r: "#a92e43", R: "#e04c55", s: "#f3b86a", S: "#ffe0a0", b: "#eee4d0", B: "#fff8e7", l: "#54405a", L: "#8a6571", w: "#b8c6bb", W: "#e6f1db" },
   orc: { ".": null, i: INK, g: "#39734d", G: "#62a45e", h: "#a4ce75", d: "#274c3d", a: "#594536", A: "#896745", c: "#bd9861", C: "#e0bd7f", m: "#ded3b5", M: "#fff0ca", s: "#9ba4a0", S: "#d6d9ca", w: "#c6c4a8" },
-  ogre: { ".": null, i: INK, g: "#54764c", G: "#7fa45d", h: "#b6c879", d: "#3c5742", a: "#58443b", A: "#80634b", c: "#b88a5d", C: "#d8ad76", m: "#ded2b8", M: "#fff0cc", b: "#89513f", B: "#b56a4d", s: "#85816f", S: "#c0b899", w: "#d9cfad" },
+  ogre: { ".": null, i: INK, g: "#7d7a5c", G: "#a3a07a", h: "#c0bc8e", d: "#57543e", a: "#49372e", A: "#755642", c: "#a27a4e", C: "#c09462", m: "#ded2b8", M: "#fff0cc", b: "#89513f", B: "#b56a4d", s: "#85816f", S: "#c0b899", w: "#d9cfad" },
 };
 
 // Rows are drawn at native pixel size, with one ink pixel around the flat color shapes.
 const sprites = {
   gnome: [
-    ".......R.......", "......RiR......", ".....RiiR......", "....RiiRR......", "...RiiRR.......",
-    "..RiiRR........", ".RiiRR..........", "RiiRR...........", "iRR.............",
-    "iissSSssii......", "isSSSSSssi......", "iSSbSibSSi......", "iSSSSSSSSi......",
-    ".ibBBBBBi.......", "..ibBBBi........", "...ibBi.........", "...iSSi.........",
-    "..iLLLLLi.......", ".iiLLLLLii......", ".iilLLLlli......", "..iiiii.........",
-    "..i...i.........", ".ii...ii........", ".i.....i........",
+    ".......R........", "......RiR.......", ".....RiiiR......", "...RRRRRRRRR....",
+    "....iSSSSSSi....", "....iSSlSSSi....", "....iSSsSSSi....",
+    "...iiBBBBBBii...", "....iiBBBBii....", ".....iBBBBi.....", "......iBBi......",
+    "....iLLLLLLi....", "...iLLLLLLLLi...", "....iLLLLLLi....",
+    "...ii....ii.....", "..ii......ii....",
   ],
   orc: [
-    "........iiiiii..........", ".......iGGGGGGi.........", "......iGhhGGGGGi........", "......iGgGGGGGGi........",
-    ".....iGGGGGGGGGi........", ".....iGGmGGmGGGii.......", ".....iGGGGGGGGGmi.......", "......iGMMGMMGmi........",
-    ".......iGGGGGmi.........", "........iGGGGi...........", ".......iGGGGGGi..........", "......iGGGaaGGGi.........",
-    ".....iGGaaCAaGGi.........", "....iGGGaaCAaaGGi........", "....iGGGaaCAaaGGi........", ".....iGGGaaaaGGi..........",
-    "......iGGGGGGGi...........", ".......iaaaai.............", "......ia...ai.............", ".....ii.....ii............",
-    "....ii.......ii...........", "...ii.........ii..........", "..ii...........ii.........", "..i.............i.........",
-  ],
-  ogre: [
-    "..............iiiiii..............", "............iiiGGGGGii.............", "..........iiGGGGGGGGGGii............", ".........iGGGhhGGGGGGGGGi...........",
-    "........iGGGGGGGGGGGGGGGGi..........", ".......iGGGGGGGGGGGGGGGGGGi.........", "......iGGGGGGGGGGGGGGGGGGGGi........",
-    "......iGGGmGGGmGGGGGGGmGGGmi.........", ".....iGGGGGGGGGGGGGGGGGGGGGmi........", ".....iGGGGGMMGGGGGGGMMGGGGGGmi........",
-    "......iGGGGGGGGGGGGGGGGGGGGmi.........", ".......iGGGGGGGGGGGGGGGGGGGmi..........", "........iGGGGGGGGGGGGGGGGGmi...........",
-    ".........iGGGGGhhhhhGGGGGmi............", ".........iGGGGhhhhhhhGGGGmi.............", "........iGGGGGhhhhhGGGGGGGmi............",
-    ".......iGGGGGGGGGGGGGGGGGGGGi...........", "......iGGGGGGGGGGGGGGGGGGGGGGi..........", ".....iGGGGGGGGGGGGGGGGGGGGGGGGi.........",
-    "....iGGGGGGGaaAAAAAaaGGGGGGGGGGi........", "...iGGGGGGaaACCCCAaaGGGGGGGGGGGmi........", "...iGGGGGGaaACCCCAaaGGGGGGGGGGGmi........",
-    "....iGGGGGaaAAAAAAAaaGGGGGGGGGGi..........", ".....iGGGGGGGGGGGGGGGGGGGGGGGGi............",
-    "......iGGGGGGGGGGGGGGGGGGGGGGi.............", ".......iaaaaaaGGGaaaaaaaai................", "......ia......i...i......ai...............",
-    ".....iaa......i...i......aa i..............", "....iaa.......i...i.......aai..............", "...ii..........i.i..........ii.............",
-    "..ii...........i.i...........ii............", ".ii.............i.............ii...........",
+    "........iiiiii..........", ".......iGGGGGGi.........", "......iGhhGGGGGi........", ".....iGGGGGGGGGi........",
+    "....iGGGGGGGGGGGi.......", "....iGdddGGGdddGGii......", "....iGGGGGGGGGGGmi......", ".....iGGGMMMMGGGmi.......",
+    "......iGGGMMGGGmi........", ".......iGGGMMmi..........", "........iGGGGi............", ".......iGGGGGGi...........",
+    "......iGGGaaGGGi..........", ".....iGGaaCAaGGi..........", "....iGGGaaCAaaGGi.........", "....iGGGaaCAaaGGi.........",
+    ".....iGGGAAAAaGGi..........", "......iGGAcCAaGGi.........", ".......iGGGGGGGi...........", "......iaaaaaaai.............",
+    ".....ia...a...ai............", "....ii....a....ii...........", "...ii..........ii...........", "..ii............ii..........",
+    ".ii..............ii.........", ".i................i.........",
   ],
 };
 
+function makeOgreSprite() {
+  const grid = Array.from({ length: 40 }, () => Array(36).fill("."));
+  const ellipse = (cx, cy, rx, ry, fill) => {
+    for (let y = Math.max(0, Math.floor(cy - ry - 1)); y <= Math.min(39, cy + ry + 1); y++)
+      for (let x = Math.max(0, Math.floor(cx - rx - 1)); x <= Math.min(35, cx + rx + 1); x++) {
+        const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+        if (d <= 1) grid[y][x] = "i";
+        if (d <= 0.72) grid[y][x] = fill;
+      }
+  };
+  const rect = (x, y, w, h, fill) => {
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) grid[yy][xx] = fill;
+  };
+  // Feet and legs sit behind the broad body.
+  ellipse(10, 35, 5, 4, "d"); ellipse(26, 35, 5, 4, "d");
+  ellipse(8, 38, 7, 2, "d"); ellipse(28, 38, 7, 2, "d");
+  ellipse(7, 19, 5, 9, "d"); ellipse(29, 19, 5, 9, "g");
+  ellipse(7, 20, 3, 6, "g"); ellipse(29, 20, 3, 6, "G");
+  // A smaller head, heavy shoulders, and a rounded belly make the scale read clearly.
+  ellipse(18, 7, 7, 7, "g");
+  ellipse(16, 6, 3, 3, "G");
+  ellipse(18, 22, 13, 13, "g");
+  ellipse(19, 25, 8, 6, "G");
+  ellipse(14, 16, 6, 5, "G");
+  // Eyes, brow, underbite and two tusks.
+  rect(13, 5, 4, 1, "i"); rect(20, 5, 4, 1, "i");
+  rect(14, 6, 2, 2, "m"); rect(21, 6, 2, 2, "m");
+  rect(15, 6, 1, 2, "i"); rect(22, 6, 1, 2, "i");
+  rect(13, 10, 11, 2, "d");
+  rect(13, 11, 2, 3, "M"); rect(22, 11, 2, 3, "M");
+  rect(16, 12, 6, 1, "i");
+  // Leather loincloth with a belt, bright studs and separate pleats.
+  rect(9, 29, 18, 2, "i"); rect(10, 30, 16, 4, "a");
+  rect(10, 30, 16, 1, "A"); rect(17, 30, 3, 2, "C");
+  rect(12, 32, 1, 2, "c"); rect(17, 32, 1, 2, "c"); rect(22, 32, 1, 2, "c");
+  return grid.map((row) => row.join(""));
+}
+
+sprites.ogre = makeOgreSprite();
+
 const stats = {
-  gnome: { hp: 2, speed: 38, reach: 19, attack: 0.62, contact: 0.28, height: 25, impact: hitSpark },
+  gnome: { hp: 2, speed: 38, reach: 19, attack: 0.62, contact: 0.28, height: 16, impact: hitSpark },
   orc: { hp: 3, speed: 23, reach: 25, attack: 0.92, contact: 0.43, height: 29, impact: hitSpark },
   ogre: { hp: 5, speed: 12, reach: 32, attack: 1.3, contact: 0.68, height: 39, impact: bluntHit },
 };
@@ -202,12 +229,12 @@ export function createEnemy(kind, opts = {}) {
           C[py * W + px] = colorValue(flash ? "#ffffff" : (colors[key] ?? INK));
         }
       }
-      // A dagger, axe or club extends left from the hand during its broad swing.
-      if (attackT > 0 || !walk) {
+      // Each weapon stays in hand while approaching and follows the attack swing.
+      {
         const swing = attackT > 0 ? attackU : 0;
-      const handX = left + Math.floor(width * 0.3) - Math.round(swing * 4);
-      const handY = top + Math.floor(rows.length * 0.64) - Math.round(Math.sin(swing * Math.PI) * 5);
-        const handleLen = kind === "gnome" ? 2 : kind === "orc" ? 6 : 8;
+        const handX = left + Math.floor(width * 0.3) - Math.round(swing * 4);
+        const handY = top + Math.floor(rows.length * 0.64) - Math.round(Math.sin(swing * Math.PI) * 5);
+        const handleLen = kind === "gnome" ? 3 : kind === "orc" ? 7 : 15;
         const wood = colorValue(kind === "gnome" ? "#59404a" : kind === "orc" ? "#684c37" : "#60463b");
         const brightWood = colorValue(kind === "orc" ? "#a27a4e" : "#a07053");
         const metal = colorValue(kind === "gnome" ? "#dce2cf" : "#d6d9ca");
@@ -217,18 +244,22 @@ export function createEnemy(kind, opts = {}) {
         for (let n = 0; n < handleLen; n++) {
           const px = handX - n, py = handY - Math.round(swing * n * 0.65);
           put(px, py, n % 3 === 0 ? brightWood : wood);
+          if (kind === "ogre") put(px, py + 1, wood);
         }
         const tipX = handX - handleLen, tipY = handY - Math.round(swing * handleLen * 0.65);
         if (kind === "gnome") {
           for (let n = 1; n <= 4; n++) put(tipX - n, tipY - Math.round(swing * n * 0.35), metal);
         } else if (kind === "orc") {
-          // The axe head sits across the haft, with a bright cutting edge facing left.
-          for (const [dx, dy] of [[0, -2], [-1, -2], [-2, -1], [-2, 0], [-2, 1], [-1, 2], [0, 2]]) put(tipX + dx, tipY + dy, metal);
+          // Dark edging and a broad crescent make the axe head read at native scale.
+          const blade = [[0, -3], [-1, -3], [-2, -2], [-3, -1], [-4, 0], [-3, 1], [-2, 2], [-1, 3], [0, 3]];
+          for (const [dx, dy] of blade) put(tipX + dx, tipY + dy, colorValue(INK));
+          for (const [dx, dy] of [[0, -2], [-1, -2], [-2, -1], [-3, 0], [-2, 1], [-1, 2], [0, 2]]) put(tipX + dx, tipY + dy, metal);
           put(tipX - 3, tipY, colorValue("#fff0ca"));
         } else {
           // A broad dark club with a single lit knot at its striking end.
-          for (const [dx, dy] of [[0, -2], [-1, -2], [1, -2], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [-1, 1], [0, 1], [1, 1]]) put(tipX + dx, tipY + dy, wood);
-          put(tipX - 1, tipY - 1, brightWood);
+          for (const [dx, dy] of [[0, -4], [-1, -4], [-2, -3], [-1, -3], [0, -3], [1, -3], [2, -3], [3, -2], [-3, -2], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2], [3, -1], [4, -1], [-4, -1], [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [-4, 0], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [-3, 1], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2]]) put(tipX + dx, tipY + dy, wood);
+          for (const [dx, dy] of [[-2, -3], [-1, -3], [-3, -2], [-2, -2], [-4, -1], [-3, -1]]) put(tipX + dx, tipY + dy, brightWood);
+          put(tipX + 3, tipY + 1, colorValue("#48352b"));
         }
       }
       impactFx?.draw(frame);
