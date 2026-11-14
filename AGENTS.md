@@ -1,6 +1,6 @@
 # Arbeitsregeln für alle Agenten (Claude, Codex, OpenCode)
 
-Projekt: Pomodoro-Timer im 8-Bit-Look. Vollständiger Plan: `docs/PLAN.md`. Lies ihn zuerst.
+Projekt: Pomodoro-Timer im 8-Bit-Look. Vollständiger Plan: `docs/PLAN.md`. Lies ihn zuerst. Worker-Ablauf: `docs/ORCHESTRATION.md`.
 
 ## Stack
 - Vanilla JavaScript (ES-Module), Vite, Vitest. Kein Framework, keine weiteren Abhängigkeiten ohne Rückfrage.
@@ -25,6 +25,7 @@ Jedes Modul hat in seiner Datei einen `CONTRACT`-Kommentar. Implementiere genau 
 | Regie | `src/game/director/**`, `src/main.js`, `index.html`, `tests/director*.test.js` |
 | QA & Deploy | `.github/**`, `README.md`, `tests/**`, `docs/**` |
 
+Jeder darf zusätzlich Snapshots unter `docs/img/issue-<nr>/` ablegen.
 Alles andere (package.json, vite.config.js, engine, config) nur nach Rückfrage beim Koordinator.
 
 ## Pixel-Art-Methode (von pixelfx übernommen)
