@@ -1,25 +1,94 @@
-// Boot. For now a smoke scene that proves the pixelfx pipeline (backdrop, campfire, stock hero) end to end.
-// The issue "Regie" replaces the smoke scene with menu -> timer -> director once the modules exist.
-import { createStage, startLoop, W, H, GROUND_Y } from "./engine/stage.js";
-import { createFx, painterFor, drawActor, stockActor, backdrop } from "pixelfx/core/index.js";
-import * as campfire from "pixelfx/fx/fire/campfire.js";
-import * as fireflies from "pixelfx/fx/weather/fireflies.js";
+import { createStage, startLoop, GROUND_Y } from "./engine/stage.js";
+import { PRESETS } from "./config/presets.js";
+import { createTimer } from "./timer/timer.js";
+import { clear, load, save } from "./timer/persist.js";
+import { createHeroine } from "./game/heroine/heroine.js";
+import { createForest } from "./game/scene/forest.js";
+import { createDirector } from "./game/director/director.js";
+import { createSfx } from "./audio/sfx.js";
+import { createUI } from "./ui/ui.js";
 
 const stage = createStage(document.getElementById("stage"));
-const bg = backdrop("sky", W, H);
-const fire = createFx(campfire, { x: 180, y: GROUND_Y });
-const flies = createFx(fireflies, { x: W / 2, y: H - 10 });
-const hero = stockActor(2);
+const sfx = createSfx();
+const menuForest = createForest();
+const menuHeroine = createHeroine({ x: 146, y: GROUND_Y });
+menuHeroine.play("idle");
+
+let timer = null;
+let director = null;
+let activeForest = null;
+let ui;
+
+function timerSpeed() {
+  const raw = new URLSearchParams(window.location.search).get("speed");
+  const speed = Number(raw);
+  return Number.isFinite(speed) && speed > 0 ? speed : 1;
+}
+
+function startSession(preset) {
+  sfx.unlock();
+  sfx.requestPermission?.();
+  sfx.play("click");
+
+  const restored = load(preset);
+  const session = createTimer.restore(preset, restored, { speed: timerSpeed() });
+  const forest = createForest();
+  const heroine = createHeroine({ x: 112, y: GROUND_Y });
+  timer = session;
+  activeForest = forest;
+  director = createDirector({ stage, forest, heroine, timer: session, sfx });
+  ui.showHud(preset);
+  session.on("change", () => save(session));
+  save(session);
+}
+
+function resetSession() {
+  if (!timer) return;
+  const current = timer;
+  current.reset();
+  save(current);
+
+  // The UI uses onReset for both the HUD button and its confirmed return-to-menu action.
+  queueMicrotask(() => {
+    if (ui.view !== "menu") return;
+    current.pause();
+    clear();
+    timer = null;
+    director = null;
+    activeForest = null;
+    sfx.ambience(null);
+  });
+}
+
+ui = createUI(document.getElementById("ui"), {
+  presets: PRESETS,
+  onStart: startSession,
+  onPause: () => timer?.pause(),
+  onResume: () => timer?.resume(),
+  onSkip: () => timer?.skip(),
+  onReset: resetSession,
+  onMute: (muted) => sfx.setMuted(muted),
+});
+ui.showMenu();
+sfx.ambience(null);
 
 startLoop((dt) => {
-  fire.update(dt);
-  flies.update(dt);
+  timer?.tick();
+  if (!director) {
+    menuForest.update(dt);
+    menuHeroine.update(dt);
+  }
+  director?.update(dt);
+
   stage.clear();
-  flies.draw(stage.frame);
-  fire.draw(stage.frame, "back");
-  const p = painterFor(stage.frame);
-  p.place(150, GROUND_Y);
-  drawActor(p, hero);
-  fire.draw(stage.frame, "front");
-  stage.present(bg);
+  if (director && activeForest) {
+    director.draw();
+    stage.present(activeForest.background());
+    ui.render(timer.state(), director.stats());
+  } else {
+    menuForest.drawBack(stage.frame);
+    menuHeroine.draw(stage.frame);
+    menuForest.drawFront(stage.frame);
+    stage.present(menuForest.background());
+  }
 });
