@@ -1,0 +1,15 @@
+:root {
+  --bg: #0d0b14;
+  --ink: #f4ead2;
+  --accent: #f53cd1;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+#app { position: relative; width: 100vw; height: 100vh; display: grid; place-items: center; overflow: hidden; }
+#stage {
+  image-rendering: pixelated;
+  width: min(100vw, calc(100vh * 16 / 9));
+  aspect-ratio: 16 / 9;
+}
+#ui { position: absolute; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }

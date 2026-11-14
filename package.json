@@ -1,0 +1,19 @@
+{
+  "name": "pomodoro-8bit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pomodoro timer in 8-bit pixel art: a heroine fights ogres, orcs and gnomes in the forest while you focus, and rests at the campfire on breaks.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "snap": "node tools/snap.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
+  }
+}
