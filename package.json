@@ -10,9 +10,11 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.js",
     "snap": "node tools/snap.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"
   }

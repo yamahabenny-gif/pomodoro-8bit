@@ -3,3 +3,7 @@ dist/
 .DS_Store
 *.log
 snaps/
+
+# Playwright
+test-results/
+playwright-report/
