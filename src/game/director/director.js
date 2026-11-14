@@ -5,10 +5,363 @@
 //                the focus length (roughly one every 30-90 s, tougher foes later in the phase) and never end mid-swing
 //                when the phase ends: the current foe flees or poofs during the transition.
 //   short break: transition, she walks to the campfire, sits; the forest goes "camp".
-//   long break:  same, "night" mode.
+//   long break:  same, "night".
 //   back to focus: she stands up, stretches, walks on.
 //   stats(): { kills: { gnome, orc, ogre }, focusDone } for the HUD; persisted per day.
 
-export function createDirector(_deps) {
-  throw new Error("createDirector: not implemented yet (issue Regie)");
+import { createEnemy, ENEMY_KINDS } from "../enemies/enemies.js";
+
+// Keep the stage contract local so the headless snapshot runner does not need Vite's pixelfx alias.
+const GROUND_Y = 150;
+const STATS_KEY = "pomodoro8bit.director.v1";
+const HERO_X = 112;
+const CAMP_OFFSET = 30;
+const ATTACKS = ["attack1", "attack2", "attack3"];
+const ENEMY_SWING = { gnome: 0.62, orc: 0.92, ogre: 1.3 };
+
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+const validCounts = (value = {}) =>
+  Object.fromEntries(ENEMY_KINDS.map((kind) => [kind, Math.max(0, Number(value[kind]) || 0)]));
+
+function today() {
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function readDailyStats() {
+  const blank = { date: today(), kills: validCounts(), focusDone: 0 };
+  try {
+    const raw = globalThis.localStorage?.getItem(STATS_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    if (!data || data.date !== blank.date) return blank;
+    return {
+      date: blank.date,
+      kills: validCounts(data.kills),
+      focusDone: Math.max(0, Number(data.focusDone) || 0),
+    };
+  } catch {
+    return blank;
+  }
+}
+
+function writeDailyStats(value) {
+  try {
+    globalThis.localStorage?.setItem(STATS_KEY, JSON.stringify(value));
+  } catch {
+    // A blocked or full store should not affect the session.
+  }
+}
+
+function modeFor(phase) {
+  return phase === "focus" ? "fight" : phase === "long" ? "night" : "camp";
+}
+
+function logicalFocusInterval(totalMs) {
+  // About 24 encounters in 25 minutes, with a 30-90 second interval for shorter and longer presets.
+  return clamp(totalMs / 24, 30_000, 90_000);
+}
+
+export function createDirector({ stage, forest, heroine, timer, sfx }) {
+  if (!stage || !forest || !heroine || !timer) {
+    throw new TypeError("createDirector requires stage, forest, heroine and timer");
+  }
+
+  let phaseState = timer.state();
+  let phase = phaseState.phase;
+  let focusElapsed = phase === "focus" ? Math.max(0, phaseState.totalMs - phaseState.remainingMs) : 0;
+  let nextEncounter = logicalFocusInterval(phaseState.totalMs);
+  let encounterIndex = 0;
+  let enemy = null;
+  let encounterState = "walk";
+  let stateTime = 0;
+  let attackIndex = 0;
+  let attackReady = false;
+  let enemyAttackReady = false;
+  let enemySwingRemaining = 0;
+  let hitCounted = false;
+  let pendingPhase = null;
+  let transitionFoe = false;
+  let daily = readDailyStats();
+  let completedSeen = phaseState.completedFocus;
+
+  forest.setMode(modeFor(phase), { instant: true });
+  heroine.x = phase === "focus" ? HERO_X : forest.campfireX - CAMP_OFFSET;
+  heroine.y = GROUND_Y;
+  heroine.play(phase === "focus" ? "idle" : "sit");
+  if (phase === "focus") sfx?.ambience?.("forest");
+  else sfx?.ambience?.("fire");
+
+  function persistStats() {
+    writeDailyStats(daily);
+  }
+
+  function playIfNeeded(name, callbacks) {
+    if (heroine.anim !== name) heroine.play(name, callbacks);
+  }
+
+  function resetEncounter() {
+    enemy = null;
+    encounterState = "walk";
+    stateTime = 0;
+    attackReady = false;
+    enemyAttackReady = false;
+    enemySwingRemaining = 0;
+    hitCounted = false;
+  }
+
+  function startPhase(next, { announce = false } = {}) {
+    const returningFromBreak = phase !== "focus" && next.phase === "focus";
+    phase = next.phase;
+    phaseState = next;
+    pendingPhase = null;
+    focusElapsed = 0;
+    nextEncounter = logicalFocusInterval(next.totalMs);
+    encounterIndex = 0;
+    transitionFoe = false;
+    resetEncounter();
+    forest.setMode(modeFor(phase));
+    if (phase === "focus") {
+      heroine.x = returningFromBreak ? forest.campfireX - CAMP_OFFSET : HERO_X;
+      if (returningFromBreak) {
+        heroine.play("standUp", { onDone: () => heroine.play("walk") });
+        encounterState = "stretch";
+      } else {
+        heroine.play("walk");
+        encounterState = "walk";
+      }
+      stateTime = 0;
+      sfx?.ambience?.("forest");
+      if (announce) sfx?.play?.("phaseFocus");
+    } else {
+      playIfNeeded("walk");
+      encounterState = "toCamp";
+      stateTime = 0;
+      sfx?.ambience?.("fire");
+      if (announce) {
+        sfx?.play?.("phaseBreak");
+        const minutes = Math.max(1, Math.round(next.totalMs / 60_000));
+        const name = next.phase === "long" ? "Lange Rast" : "Kurze Rast";
+        sfx?.notify?.("Kampf vorbei", `${name}: ${minutes} Minuten.`);
+      }
+    }
+  }
+
+  function onPhase(next) {
+    if (phase === "focus" && enemy && !enemy.isDead()) {
+      pendingPhase = next;
+      transitionFoe = true;
+      if (encounterState === "approach") {
+        enemy.hit(enemy.hp);
+        encounterState = "transitionPoof";
+      }
+    } else startPhase(next, { announce: true });
+  }
+
+  timer.on?.("phase", onPhase);
+  timer.on?.("end", ({ phase: ended }) => {
+    if (ended === "focus") {
+      daily.focusDone += 1;
+      completedSeen += 1;
+      persistStats();
+    }
+  });
+
+  function spawnEncounter() {
+    const kind = ENEMY_KINDS[Math.min(encounterIndex % ENEMY_KINDS.length, ENEMY_KINDS.length - 1)];
+    encounterIndex += 1;
+    enemy = createEnemy(kind, { x: 270, y: GROUND_Y });
+    enemy.approach(heroine.x + 10);
+    heroine.play("walk");
+    encounterState = "approach";
+    stateTime = 0;
+    attackIndex = 0;
+    hitCounted = false;
+  }
+
+  function beginAttack() {
+    const name = ATTACKS[attackIndex++ % ATTACKS.length];
+    attackReady = false;
+    heroine.play(name, {
+      onHit() {
+        if (!enemy || enemy.isDead() || transitionFoe) return;
+        sfx?.play?.("hit");
+        const remaining = enemy.hit(1);
+        if (remaining <= 0 && !hitCounted) {
+          hitCounted = true;
+          daily.kills[enemy.kind] += 1;
+          persistStats();
+          sfx?.play?.("enemyDie");
+        }
+      },
+      onDone() {
+        attackReady = true;
+      },
+    });
+    sfx?.play?.("swing");
+  }
+
+  function beginEnemyAttack() {
+    if (!enemy || transitionFoe) return;
+    enemyAttackReady = false;
+    const started = enemy.attack({
+      onHit() {
+        if (!enemy || transitionFoe) return;
+        heroine.play("hurt", {
+          onDone: () => {
+            if (enemy && enemy.state === "fight") {
+              heroine.play("idle");
+              attackReady = true;
+            }
+          },
+        });
+        sfx?.play?.("hurt");
+      },
+    });
+    if (started) enemySwingRemaining = ENEMY_SWING[enemy.kind];
+    else enemyAttackReady = true;
+  }
+
+  function updateFocus(dt) {
+    if (encounterState === "stretch") {
+      if (heroine.anim === "idle" || heroine.anim === "walk") {
+        encounterState = "depart";
+        playIfNeeded("walk");
+      } else return;
+    }
+    if (encounterState === "depart") {
+      const distance = HERO_X - heroine.x;
+      heroine.x += Math.sign(distance) * Math.min(Math.abs(distance), 36 * dt);
+      forest.scroll(28 * dt);
+      if (Math.abs(distance) < 0.5) {
+        heroine.x = HERO_X;
+        encounterState = "walk";
+      }
+      return;
+    }
+    if (encounterState === "walk") {
+      playIfNeeded("walk");
+      forest.scroll(28 * dt);
+      stateTime += dt;
+      if (enemy === null && focusElapsed >= nextEncounter) {
+        nextEncounter += logicalFocusInterval(phaseState.totalMs);
+        spawnEncounter();
+      }
+      return;
+    }
+    if (!enemy) return;
+    if (encounterState === "approach") {
+      enemy.approach(heroine.x + 10);
+      playIfNeeded("walk");
+      if (enemy.state === "fight") {
+        encounterState = "fight";
+        stateTime = 0;
+        attackReady = true;
+        enemyAttackReady = false;
+      }
+      return;
+    }
+    if (encounterState === "fight") {
+      stateTime += dt;
+      if (enemy.state === "dying" || enemy.state === "dead") {
+        encounterState = "victory";
+        heroine.play("victory", {
+          onDone: () => {
+            if (!pendingPhase) encounterState = "walkOn";
+          },
+        });
+        stateTime = 0;
+        return;
+      }
+      if (transitionFoe) {
+        if (!heroine.anim.startsWith("attack") && enemySwingRemaining <= 0) {
+          enemy.hit(enemy.hp);
+          encounterState = "transitionPoof";
+          stateTime = 0;
+        }
+        return;
+      }
+      if (attackReady) beginAttack();
+      else if (enemyAttackReady && heroine.anim !== "hurt") beginEnemyAttack();
+      else if (stateTime > 1.25 && !heroine.anim.startsWith("attack") && enemy.state === "fight") {
+        enemyAttackReady = true;
+      }
+      return;
+    }
+    if (encounterState === "transitionPoof") {
+      if (enemy.isDead()) {
+        enemy = null;
+        if (pendingPhase) startPhase(pendingPhase, { announce: true });
+      }
+      return;
+    }
+    if (encounterState === "victory") {
+      if (heroine.anim === "idle") {
+        encounterState = "walkOn";
+        stateTime = 0;
+      }
+      return;
+    }
+    if (encounterState === "walkOn") {
+      playIfNeeded("walk");
+      forest.scroll(42 * dt);
+      stateTime += dt;
+      if (stateTime >= 1.1) {
+        resetEncounter();
+        if (pendingPhase) startPhase(pendingPhase, { announce: true });
+      }
+    }
+  }
+
+  function updateBreak(dt) {
+    if (encounterState === "toCamp") {
+      const target = forest.campfireX - CAMP_OFFSET;
+      const distance = target - heroine.x;
+      heroine.x += Math.sign(distance) * Math.min(Math.abs(distance), 36 * dt);
+      playIfNeeded("walk");
+      if (Math.abs(distance) < 0.5) {
+        heroine.x = target;
+        heroine.play("sitDown", { onDone: () => heroine.play("sit") });
+        encounterState = "sitDown";
+      }
+      return;
+    }
+    if (encounterState === "sitDown") {
+      if (heroine.anim === "sit") encounterState = "sit";
+    }
+  }
+
+  return {
+    update(dt) {
+      dt = Math.max(0, Number(dt) || 0);
+      const state = timer.state();
+      // The timer reports logical milliseconds, so this also follows ?speed=60 and pause/resume exactly.
+      if (phase === "focus" && state.phase === "focus") {
+        const elapsed = Math.max(0, phaseState.totalMs - state.remainingMs);
+        focusElapsed = Math.max(focusElapsed, elapsed);
+      }
+      phaseState = state;
+      forest.update(dt);
+      heroine.update(dt);
+      enemySwingRemaining = Math.max(0, enemySwingRemaining - dt);
+      enemy?.update(dt);
+      if (state.completedFocus > completedSeen) {
+        daily.focusDone += state.completedFocus - completedSeen;
+        completedSeen = state.completedFocus;
+        persistStats();
+      }
+      if (phase === "focus") updateFocus(dt);
+      else updateBreak(dt);
+    },
+    draw() {
+      forest.drawBack(stage.frame);
+      heroine.draw(stage.frame);
+      enemy?.draw(stage.frame);
+      forest.drawFront(stage.frame);
+    },
+    stats() {
+      return { kills: { ...daily.kills }, focusDone: daily.focusDone };
+    },
+  };
 }
