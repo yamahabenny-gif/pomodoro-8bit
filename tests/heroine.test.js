@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFrame, hex } from "pixelfx/core/index.js";
-import { createHeroine } from "../src/game/heroine/heroine.js";
+import { createHeroine, heroinePose, swordPose } from "../src/game/heroine/heroine.js";
 
 const ANIMS = ["idle", "walk", "attack1", "attack2", "attack3", "hurt", "victory", "sitDown", "sit", "standUp"];
 
@@ -61,5 +61,25 @@ describe("heroine", () => {
     const pixels = Array.from(frame.color);
     expect(pixels.filter((pixel) => pixel === (hex("#754a35") >>> 0)).length).toBeGreaterThan(0);
     expect(pixels.filter((pixel) => pixel === (hex("#d8e6dc") >>> 0)).length).toBeGreaterThan(0);
+  });
+
+  it("keeps the sword grip within one pixel of the hand at every animation sample", () => {
+    const durations = { attack1: 0.68, attack2: 0.72, attack3: 0.84, hurt: 0.38, victory: 0.9, sitDown: 0.65, standUp: 0.62 };
+    for (const name of ANIMS) for (const sample of [0, 0.25, 0.5, 0.75, 1]) {
+      const elapsed = (durations[name] ?? 0.34) * sample;
+      const pose = heroinePose(name, elapsed);
+      const weapon = swordPose(name, sample, pose.hand, pose.seated);
+      if (pose.seated) {
+        expect(weapon).toBeNull();
+        continue;
+      }
+      expect(Math.hypot(weapon.grip.x - pose.hand.x, weapon.grip.y - pose.hand.y)).toBeLessThanOrEqual(1);
+      expect(pose.rows[pose.hand.y][pose.hand.x]).not.toBe(".");
+    }
+  });
+
+  it("uses four distinct held drawings in the walk cycle", () => {
+    const frames = [0, 1, 2, 3].map((step) => heroinePose("walk", step / 12).rows.join(""));
+    expect(new Set(frames).size).toBe(4);
   });
 });

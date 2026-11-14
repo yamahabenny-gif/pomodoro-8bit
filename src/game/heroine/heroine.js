@@ -10,6 +10,7 @@
 //   update(dt)
 //   draw(frame)                  draws with pixelfx painterFor(frame)
 //   reach                        px in front of her feet where a sword hit lands
+//   heroinePose(anim, elapsed) and swordPose(anim, progress, hand, seated) are pixel-coordinate helpers for tests.
 
 import { hex, painterFor } from "pixelfx/core/index.js";
 
@@ -36,7 +37,7 @@ const smooth = (n) => { n = clamp01(n); return n * n * (3 - 2 * n); };
 
 // A tiny pixel canvas keeps the heroine's silhouette crisp at the stage's native resolution.
 function makeBody(anim, t) {
-  const w = 25, h = 28, px = Array.from({ length: h }, () => Array(w).fill("."));
+  const w = 32, h = 28, px = Array.from({ length: h }, () => Array(w).fill("."));
   const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < w && y < h) px[y][x] = c; };
   const rect = (x, y, rw, rh, c) => { for (let j = 0; j < rh; j++) for (let i = 0; i < rw; i++) put(x + i, y + j, c); };
   const ellipse = (cx, cy, rx, ry, c) => {
@@ -51,8 +52,8 @@ function makeBody(anim, t) {
   };
 
   const walk = anim === "walk", seated = anim === "sit" || (anim === "sitDown" && t >= 0.24) || (anim === "standUp" && t < 0.24);
-  const phase = Math.floor(t * 12) & 1;
-  const bob = walk ? (phase & 1 ? -1 : 0) : anim === "idle" || anim === "sit" ? (phase >= 2 ? -1 : 0) : 0;
+  const phase = Math.floor(t * 12) & 3;
+  const bob = walk ? [0, 1, 0, -1][phase] : anim === "idle" || anim === "sit" ? (phase >= 2 ? -1 : 0) : 0;
   const attackProgress = ONE_SHOTS[anim] ? clamp01(t / ONE_SHOTS[anim].duration) : 0;
   const lean = anim === "attack2" ? 2 : anim === "attack3" ? 3 : anim === "hurt" ? -2 : seated ? 1 : 0;
   const ox = lean;
@@ -70,13 +71,12 @@ function makeBody(anim, t) {
   };
 
   // Ponytail sits behind the head; the two tips swing on held 12 fps steps.
-  const swing = walk || anim === "idle" ? phase : 0;
+  const swing = walk ? [0, 1, 0, -1][phase] : anim === "idle" ? phase & 1 : 0;
   outlineEllipse(7 + headOx, 8 + headBob + swing, 3, 4, "hair");
   put(4 + headOx, 8 + headBob + swing, "hairL"); put(5 + headOx, 11 + headBob + swing, "hairL");
   put(6 + headOx, 12 + headBob + swing, "hair");
 
   // Legs and boots. Alternating feet make the walk loop read at a glance.
-  const step = walk ? (phase ? 1 : -1) : 0;
   if (seated) {
     // Thighs turn forward, then shins fold down to make a clear seated L shape.
     rect(8 + ox, 19 + bob, 5, 3, "tunicS"); rect(12 + ox, 20 + bob, 7, 2, "tunic");
@@ -92,12 +92,27 @@ function makeBody(anim, t) {
     rect(8 + ox, 19 + bob, 5, 3, "tunicS"); rect(13 + ox, 20 + bob, 5, 2, "tunic");
     rect(6 + ox, 22 + bob, 6, 2, "tunicS"); rect(15 + ox, 22 + bob, 6, 2, "tunic");
     rect(4 + ox, 24 + bob, 5, 2, "boot"); rect(17 + ox, 24 + bob, 5, 2, "bootL");
+  } else if (walk) {
+    // Four held gait drawings: contact, compression, pass, and the opposite high step.
+    if (phase === 0) {
+      rect(8 + ox, 19 + bob, 4, 5, "tunicS"); rect(13 + ox, 18 + bob, 4, 4, "tunic");
+      rect(5 + ox, 23 + bob, 6, 2, "boot"); rect(15 + ox, 22 + bob, 6, 2, "bootL");
+    } else if (phase === 1) {
+      rect(9 + ox, 19 + bob, 4, 5, "tunicS"); rect(13 + ox, 19 + bob, 4, 5, "tunic");
+      rect(8 + ox, 24 + bob, 6, 2, "boot"); rect(13 + ox, 24 + bob, 6, 2, "bootL");
+    } else if (phase === 2) {
+      rect(9 + ox, 19 + bob, 4, 4, "tunicS"); rect(14 + ox, 18 + bob, 4, 3, "tunic");
+      rect(9 + ox, 23 + bob, 6, 2, "boot"); rect(15 + ox, 20 + bob, 6, 2, "bootL");
+    } else {
+      rect(9 + ox, 18 + bob, 4, 4, "tunicS"); rect(13 + ox, 19 + bob, 4, 5, "tunic");
+      rect(6 + ox, 21 + bob, 6, 2, "boot"); rect(13 + ox, 23 + bob, 6, 2, "bootL");
+    }
   } else {
-    rect(9 + ox, 19 + bob, 3, 4 + Math.max(0, step), "tunicS");
-    rect(13 + ox, 19 + bob, 3, 4 + Math.max(0, -step), "tunic");
-    rect(8 + ox + Math.max(0, -step), 23 + bob, 5, 2, "boot");
-    rect(12 + ox + Math.max(0, step), 23 + bob, 5, 2, "bootL");
-    put(9 + ox + Math.max(0, -step), 23 + bob, "gold"); put(13 + ox + Math.max(0, step), 23 + bob, "gold");
+    rect(9 + ox, 19 + bob, 3, 4, "tunicS");
+    rect(13 + ox, 19 + bob, 3, 4, "tunic");
+    rect(8 + ox, 23 + bob, 5, 2, "boot");
+    rect(12 + ox, 23 + bob, 5, 2, "bootL");
+    put(9 + ox, 23 + bob, "gold"); put(13 + ox, 23 + bob, "gold");
   }
 
   // Short tunic, belt and chest highlight.
@@ -110,12 +125,18 @@ function makeBody(anim, t) {
 
   // Arm, shoulder and hand. Its angle changes with each sword beat.
   let arm = [18 + ox, 16 + bob, 20 + ox, 15 + bob];
+  if (walk) arm = [[18, 15, 20, 15], [19, 14, 21, 13], [18, 16, 20, 17], [17, 15, 19, 16]][phase].map((v, i) => v + (i % 2 ? bob : ox));
   if (anim === "attack1") arm = attackProgress < 0.42 ? [18 + ox, 8 + bob, 17 + ox, 3 + bob] : [19 + ox, 14 + bob, 22 + ox, 18 + bob];
   if (anim === "attack2") arm = [20 + ox, 15 + bob, 24 + ox, 14 + bob];
   if (anim === "attack3") arm = [21 + ox, 14 + bob, 25 + ox, 13 + bob];
   if (anim === "victory") arm = [17 + ox, 8 + bob, 18 + ox, 5 + bob];
   if (seated) arm = [17 + ox, 17 + bob, 18 + ox, 20 + bob];
   rect(15 + ox, 13 + bob, 4, 4, "k");
+  if (walk) {
+    const farArm = [[12, 15, 10, 18], [12, 16, 10, 19], [12, 15, 15, 14], [12, 14, 15, 15]][phase];
+    line(farArm[0] + ox, farArm[1] + bob, farArm[2] + ox, farArm[3] + bob, "k");
+    line(farArm[0] + ox + 1, farArm[1] + bob, farArm[2] + ox + 1, farArm[3] + bob, "skinS");
+  }
   line(17 + ox, 14 + bob, arm[0], arm[1], "k");
   line(17 + ox, 15 + bob, arm[0], arm[1] + 1, "skinS");
   line(arm[0], arm[1], arm[2], arm[3], "k");
@@ -140,7 +161,7 @@ function makeBody(anim, t) {
   // Pink scarf knot and tail flutter left in the breeze.
   rect(10 + headOx, 11 + headBob, 7, 2, "k");
   rect(11 + headOx, 11 + headBob, 5, 1, "scarf"); put(15 + headOx, 12 + headBob, "scarfL");
-  const flutter = anim === "idle" || walk ? phase : 0;
+  const flutter = walk ? [0, 1, 0, -1][phase] : anim === "idle" ? phase & 1 : 0;
   rect(7 + headOx, 11 + headBob, 4, 2, "scarf");
   put(6 + headOx, 10 + headBob + flutter, "scarfL"); put(5 + headOx, 11 + headBob + flutter, "scarf");
   put(4 + headOx, 12 + headBob + flutter, "scarf"); put(5 + headOx, 13 + headBob + flutter, "scarfL");
@@ -148,17 +169,30 @@ function makeBody(anim, t) {
   return { rows: px.map((row) => row.map((color) => PIXEL_CODE[color] ?? ".").join("")), arm };
 }
 
-function swordPose(anim, progress, arm) {
-  const handX = arm[2] + 1, handY = arm[3] + 1;
+export function heroinePose(anim, elapsed = 0) {
+  const body = makeBody(anim, elapsed);
+  const seated = anim === "sit" || (anim === "sitDown" && elapsed >= 0.24) || (anim === "standUp" && elapsed < 0.24);
+  return { rows: body.rows, arm: body.arm, hand: { x: body.arm[2] + 1, y: body.arm[3] + 1 }, seated };
+}
+
+/** Return the sword grip and tip in sprite-local pixels, anchored directly to the hand. */
+export function swordPose(anim, progress, hand, seated = false) {
+  if (seated) return null;
+  const handX = hand.x, handY = hand.y;
+  let tip;
   if (anim.startsWith("attack")) {
     const swing = progress >= 0.38 && progress < 0.72;
-    if (anim === "attack1") return progress < 0.38 ? [handX - 1, handY - 1, handX + 1, handY - 12] : swing ? [handX, handY, handX + 8, handY + 9] : [handX + 1, handY, handX + 6, handY + 1];
-    if (anim === "attack2") return progress < 0.38 ? [handX, handY + 1, handX - 9, handY + 3] : swing ? [handX, handY, handX + 12, handY + 1] : [handX + 1, handY, handX + 7, handY - 1];
-    return progress < 0.38 ? [handX - 1, handY, handX + 4, handY - 4] : swing ? [handX + 1, handY, handX + 14, handY] : [handX + 1, handY, handX + 9, handY];
+    if (anim === "attack1") tip = progress < 0.38 ? { x: handX + 1, y: handY - 12 } : swing ? { x: handX + 8, y: handY + 9 } : { x: handX + 6, y: handY + 1 };
+    else if (anim === "attack2") tip = progress < 0.38 ? { x: handX - 9, y: handY + 3 } : swing ? { x: handX + 12, y: handY + 1 } : { x: handX + 7, y: handY - 1 };
+    else tip = progress < 0.38 ? { x: handX + 4, y: handY - 4 } : swing ? { x: handX + 14, y: handY } : { x: handX + 9, y: handY };
+  } else if (anim === "victory") {
+    tip = { x: handX + 1, y: handY - 12 };
+  } else if (anim === "hurt") {
+    tip = { x: handX + 4, y: handY + 4 };
+  } else {
+    tip = { x: handX + 7, y: handY - 7 };
   }
-  if (anim === "victory") return [handX, handY, handX + 1, handY - 12];
-  if (anim === "hurt") return [handX - 2, handY + 1, handX + 4, handY + 4];
-  return [handX, handY - 2, handX + 7, handY - 7];
+  return { grip: { x: handX, y: handY }, tip };
 }
 
 function drawLyingSword(p) {
@@ -211,8 +245,8 @@ export function createHeroine({ x = 0, y = 0 } = {}) {
     draw(frame) {
       const p = painterFor(frame);
       const progress = ONE_SHOTS[anim] ? elapsed / ONE_SHOTS[anim].duration : 0;
-      const pose = makeBody(anim, loopTime);
-      const seated = anim === "sit" || (anim === "sitDown" && elapsed >= 0.24) || (anim === "standUp" && elapsed < 0.24);
+      const pose = heroinePose(anim, loopTime);
+      const seated = pose.seated;
       if (seated) {
         p.place(heroine.x, heroine.y);
         p.sprite(SIT_STUMP, PALETTE, SIT_STUMP_OFFSET_X, -8);
@@ -229,9 +263,10 @@ export function createHeroine({ x = 0, y = 0 } = {}) {
       if (seated) {
         drawLyingSword(p);
       } else {
-        const [sx, sy, ex, ey] = swordPose(anim, progress, pose.arm);
+        const weapon = swordPose(anim, progress, pose.hand, seated);
+        const { grip, tip } = weapon;
         const sword = (x, y) => [x - 12, y - 27];
-        const [hiltX, hiltY] = sword(sx, sy), [bladeX, bladeY] = sword(ex, ey);
+        const [hiltX, hiltY] = sword(grip.x, grip.y), [bladeX, bladeY] = sword(tip.x, tip.y);
         p.line(hiltX, hiltY, hiltX + 1, hiltY + 1, color("k"));
         p.line(hiltX + 1, hiltY, hiltX + 2, hiltY + 1, color("g"));
         p.line(hiltX + 2, hiltY, bladeX, bladeY, color("d"));
