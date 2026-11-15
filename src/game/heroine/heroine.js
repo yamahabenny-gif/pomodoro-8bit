@@ -10,6 +10,9 @@
 //   update(dt)
 //   draw(frame)                  draws with pixelfx painterFor(frame)
 //   reach                        px in front of her feet where a sword hit lands
+//   WAVE 4 (issue "Heldin neu"): new look after the knight reference: brown long hair (ponytail), silver-blue plate
+//   armour, red cape, small crown-helm, sword; still faces right. New anims: "lightFire" (kneel, strike flint,
+//   onHit at the spark that lights the fire, onDone when she sits back) and "levelUp" (sword raised, short glow).
 //   heroinePose(anim, elapsed) and swordPose(anim, progress, hand, seated) are pixel-coordinate helpers for tests.
 
 import { hex, painterFor } from "pixelfx/core/index.js";

@@ -3,6 +3,10 @@
 //   "orc"    medium, green, axe, 3 hits
 //   "ogre"   big, slow, club, 5 hits, ground shake on landing blows
 //
+//   WAVE 4 (issue "Gegner neu"): the orc becomes a broad, muscular half-orc (topknot, beard, big axe, round wooden
+//   shield, fur and leather) and blocks now and then; new "golem": a stone golem, mossy shoulder, glowing orange
+//   cracks and eyes, 7 hits, crumbles to rubble on death. Kinds then: ["gnome", "orc", "ogre", "golem"].
+//
 // ENEMY_KINDS: ["gnome", "orc", "ogre"]
 // createEnemy(kind, { x, y }) returns:
 //   kind, x, y, hp, maxHp

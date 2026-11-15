@@ -24,7 +24,18 @@ Jedes Modul hat in seiner Datei einen `CONTRACT`-Kommentar. Implementiere genau 
 | Sound & Benachrichtigung | `src/audio/**`, `tests/audio*.test.js` |
 | Regie | `src/game/director/**`, `src/main.js`, `index.html`, `tests/director*.test.js` |
 | QA & Deploy | `.github/**`, `README.md`, `tests/**`, `docs/**` |
+| Wald-Reise (W4) | `src/game/scene/forest.js`, `src/game/scene/fx/**`, `tools/scenes/forest*.mjs`, `tests/forest*.test.js` |
+| Rast-Szenen (W4) | `src/game/scene/rest.js`, `src/game/scene/rest/**`, `tools/scenes/rest*.mjs`, `tests/rest*.test.js` |
+| Heldin neu (W4) | wie Heldin |
+| Gegner neu (W4) | wie Gegner |
+| Level-Up (W4) | `src/game/progress/**`, `src/ui/**`, `tests/progress*.test.js`, `tests/ui*.test.js` |
+| Sound 2 (W4) | wie Sound & Benachrichtigung |
+| Regie 2 (W5) | wie Regie, plus `src/game/director/**` neue Dateien |
+| QA 2 (W6) | wie QA & Deploy |
 
+Referenzbilder für Wave 4 liegen außerhalb des Repos unter `../refs/` (vom Worktree aus
+`/Users/benjaminlang/orca/workspaces/pomodoro_8bit_Mochi/refs/`). Sie sind Stil-Referenzen mit fremdem Copyright:
+ansehen, nachempfinden, **nie ins Repo kopieren oder abpausen**.
 Jeder darf zusätzlich Snapshots unter `docs/img/issue-<nr>/` ablegen.
 Alles andere (package.json, vite.config.js, engine, config) nur nach Rückfrage beim Koordinator.
 

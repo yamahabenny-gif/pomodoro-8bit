@@ -1,5 +1,8 @@
 // CONTRACT (owned by issue "Regie"). Ties the timer to the scene: what happens on stage at every moment.
 //
+// WAVE 5 (issue "Regie 2"): twice as many encounters; breaks use src/game/scene/rest.js (storm or lake, the
+// heroine lights the fire); createDirector also takes { progress } and shows level-ups on stage.
+//
 // createDirector({ stage, forest, heroine, timer, sfx }) returns { update(dt), draw(), stats() }
 //   focus phase: the heroine walks, an enemy appears, they fight, it dies, she walks on. Encounters are paced to
 //                the focus length (roughly one every 30-90 s, tougher foes later in the phase) and never end mid-swing
