@@ -39,6 +39,7 @@ const FAR_PERIOD = 480, FAR_SPEED = 0.16;
 const MID_PERIOD = 480, MID_SPEED = 0.42;
 const NEAR_PERIOD = 360, NEAR_SPEED = 0.72;
 const FRONT_PERIOD = 240, FRONT_SPEED = 1.12;
+const JOURNEY_PERIOD = FAR_PERIOD * 3;
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
 const bay = (x, y) => BAYER[((y & 3) << 2) | (x & 3)];
@@ -48,7 +49,7 @@ const mod = (v, m) => ((v % m) + m) % m;
 // change can dissolve the colours on the same silhouettes.
 const SKY = {
   fight: [
-    [0, "#395d7e"], [0.42, "#6f93a0"], [0.6, "#93aa92"], [0.76, "#b6b184"], [0.9, "#d8c48e"], [1, "#e8d29c"],
+    [0, "#22213d"], [0.22, "#343654"], [0.4, "#5d4a65"], [0.52, "#a85c54"], [0.61, "#ed8b4c"], [0.7, "#bd6650"], [0.84, "#59465e"], [1, "#27253a"],
   ],
   camp: [
     [0, "#241f3a"], [0.3, "#463c56"], [0.52, "#704858"], [0.7, "#a85c50"], [0.85, "#cc7a4e"], [1, "#ecaa62"],
@@ -57,15 +58,15 @@ const SKY = {
 const PAL = {
   fight: {
     ink: "#17121f",
-    far: ["#33494a", "#3b5750", "#456258"],
-    mist: "#b8c8ac",
-    bark: "#3a2b22", barkLit: "#65462c", barkDark: "#241b17", moss: "#4c6a34",
-    canopy: "#2f4a34", canopyLit: "#476c42",
-    leafDark: "#2c4630", leafMid: "#3e6238", leafLit: "#5e8a44",
-    stem: "#3a4a26",
-    rockDark: "#43434e", rockMid: "#5c5c68", rockLit: "#7c7c88",
-    grassDark: "#22321c", grassMid: "#44662c", grassTip: "#96b85a",
-    flower: "#e8d05a",
+    far: ["#302942", "#3b3150", "#493753"],
+    mist: "#8992b5",
+    bark: "#382530", barkLit: "#76503e", barkDark: "#211923", moss: "#48503a",
+    canopy: "#28263b", canopyLit: "#40364c",
+    leafDark: "#272532", leafMid: "#393544", leafLit: "#665342",
+    stem: "#393443",
+    rockDark: "#393746", rockMid: "#514c5d", rockLit: "#736675",
+    grassDark: "#171a22", grassMid: "#343a31", grassTip: "#8b7650",
+    flower: "#d99b59",
   },
   camp: {
     ink: "#17121f",
@@ -97,8 +98,8 @@ const SKY_STOPS = Object.fromEntries(MODES.filter((m) => SKY[m]).map((m) => [m, 
 
 const GROUND = {
   fight: {
-    stops: ["#6a5a38", "#4a3a26", "#3a2e20", "#2a2116"],
-    pebble: "#5e4e36", dark: "#211a12", litter: "#7a5a32", moss: "#4a5a30", clearing: "#4a3a28",
+    stops: ["#49443c", "#34302e", "#292530", "#1d1b25"],
+    pebble: "#514744", dark: "#17151d", litter: "#624536", moss: "#414333", clearing: "#3e3535",
   },
   camp: {
     stops: ["#6a4a30", "#3f2e24", "#30251d", "#211a16"],
@@ -219,17 +220,19 @@ export function createForest() {
   const midCache = {};
   const nearCache = {};
   const bgCache = new Map();
+  let journeyCache = null;
   let scratch = null;
 
   const fire = createFx(campfire, { x: CAMPFIRE_X, y: GROUND_Y, height: 20, seed: 5 });
   const flies = createFx(fireflies, {
     x: W / 2, y: H - 10, seed: 4, light: 1.3,
-    grass: ["#070f0b", "#101c14", "#182a1e", "#243a28", "#345036", "#4a6a46"],
+    palette: ["#3d2818", "#8d4d25", "#d58031", "#f1b64d", "#ffe18a", "#fff4c0"],
+    grass: ["#090b13", "#141824", "#20232f", "#2a3038", "#3a413c", "#555340"],
   });
   const leaves = createFx(fallingLeaves, { x: W / 2, y: GROUND_Y, seed: 8 });
   const rays = createFx(godRays, {
     x: W / 2, y: GROUND_Y, seed: 3, light: 0.45,
-    palette: ["#5a7a88", "#6f8278", "#a09158", "#d0ac64", "#e8c47c", "#f6dca4", "#fff4d0"],
+    palette: ["#35334f", "#514761", "#856053", "#c2764b", "#e99b59", "#f1c17a", "#ffdfad"],
   });
 
   // ---- baked sky + ground, one buffer per mode
@@ -252,7 +255,7 @@ export function createForest() {
       }
     }
     // low sun / sunset glow, dithered so it stays in the palette's steps
-    if (m === "fight") glow(out, W / 2 - 150, -24, 120, hex("#f4e6b4"), 0.75);
+    if (m === "fight") glow(out, W / 2, 96, 122, hex("#f2a05a"), 0.35);
     if (m === "camp") {
       glow(out, CAMPFIRE_X + 34, GROUND_Y + 2, 96, hex("#f0a05a"), 0.7);
       disc(out, 276, GROUND_Y - 12, 7, (d) => (d > 0.82 ? hex("#e8a05a") : hex("#ffd894")));
@@ -369,7 +372,8 @@ export function createForest() {
 
   function compose(m) {
     const off = mod(Math.floor(scrollX * FAR_SPEED), FAR_PERIOD);
-    const key = m + ":" + off;
+    const journeyOff = m === "fight" ? mod(Math.floor(scrollX * FAR_SPEED), JOURNEY_PERIOD) : 0;
+    const key = m + ":" + off + ":" + journeyOff;
     const hit = bgCache.get(key);
     if (hit) return hit;
     if (!skyCache[m]) skyCache[m] = bakeSky(m);
@@ -382,18 +386,104 @@ export function createForest() {
         if (c) buf[row + x] = c;
       }
     }
+    if (m === "fight") blitJourneyGround(buf, journeyOff);
     bakeMist(buf, m);
     bgCache.set(key, buf);
     if (bgCache.size > 6) bgCache.delete(bgCache.keys().next().value);
     return buf;
   }
 
+  function buildJourney() {
+    if (journeyCache) return journeyCache;
+    const f = createFrame(JOURNEY_PERIOD, H), p = painterFor(f);
+    p.place(0, 0);
+    const ink = hex("#17121f"), water = [hex("#20263c"), hex("#293149"), hex("#38445a")];
+    const moss = hex("#526341"), mossLight = hex("#71804c"), bark = hex("#56392c");
+    const stumpX = FAR_PERIOD + 210;
+    // The middle stretch opens into a mossy glade with a stump, fungi and a low fallen log.
+    p.ellipse(stumpX + 28, GROUND_Y + 1, 25, 3, ink, 0.7);
+    p.poly([[stumpX + 13, 151], [stumpX + 16, 144], [stumpX + 20, 140], [stumpX + 36, 140], [stumpX + 41, 145], [stumpX + 44, 151]], ink);
+    p.poly([[stumpX + 16, 150], [stumpX + 19, 145], [stumpX + 22, 142], [stumpX + 35, 142], [stumpX + 39, 146], [stumpX + 41, 150]], bark);
+    p.ellipse(stumpX + 28, 142, 8, 2.4, hex("#8c6844"), 0.9);
+    p.line(stumpX + 21, 142, stumpX + 35, 142, hex("#b58a54"));
+    p.line(stumpX - 35, 151, stumpX + 3, 149, ink);
+    p.line(stumpX - 34, 149, stumpX + 2, 147, hex("#563b2a"));
+    for (let i = 0; i < 5; i++) {
+      const x = stumpX - 18 + i * 9;
+      p.line(x, 149, x + (i % 2 ? 2 : -2), 145 + (i % 3), hex("#30412b"));
+      p.ellipse(x + (i % 2 ? 2 : -2), 145 + (i % 3), 3.5, 1.6, ink, 1);
+      p.ellipse(x + (i % 2 ? 2 : -2), 144 + (i % 3), 2.5, 1, i % 2 ? hex("#cc7546") : hex("#b65d3f"), 1);
+    }
+    // A stream occupies the last stretch; its banks meet the floor on both sides.
+    const riverX = FAR_PERIOD * 2 + 72, riverW = 336;
+    p.rect(riverX, 154, riverW, H - 154, water[0]);
+    for (let i = 0; i < 36; i++) {
+      const x = riverX + 5 + rand(881, i, 1) * (riverW - 10);
+      const y = 156 + rand(881, i, 2) * 22;
+      const w = 2 + rand(881, i, 3) * 13;
+      p.line(x, y, x + w, y, water[i % 3]);
+      if (i % 3 === 0) p.line(x + 1, y + 1, x + w * 0.55, y + 1, hex("#586176"));
+    }
+    p.rect(riverX, 150, 16, 4, moss);
+    p.rect(riverX + riverW - 16, 150, 16, 4, moss);
+    p.line(riverX + 4, 151, riverX + 13, 151, mossLight);
+    p.line(riverX + riverW - 13, 151, riverX + riverW - 4, 151, mossLight);
+    const bridgeX = riverX - 3, bridgeW = riverW + 6;
+    p.line(bridgeX + 13, 158, bridgeX + 27, 147, ink);
+    p.line(bridgeX + bridgeW - 13, 158, bridgeX + bridgeW - 27, 147, ink);
+    p.line(bridgeX + 13, 157, bridgeX + 27, 149, bark);
+    p.line(bridgeX + bridgeW - 13, 157, bridgeX + bridgeW - 27, 149, bark);
+    p.rect(bridgeX, 145, bridgeW, 6, ink);
+    p.rect(bridgeX + 2, 145, bridgeW - 4, 3, hex("#8a6040"));
+    for (let x = bridgeX + 5; x < bridgeX + bridgeW - 3; x += 8) {
+      p.line(x, 145, x, 150, hex("#c08a52"));
+      p.px(x + 2, 146, hex("#68432f"));
+    }
+    p.line(bridgeX, 144, bridgeX + bridgeW, 144, hex("#52372d"));
+    journeyCache = f;
+    return f;
+  }
+
+  function blitJourneyGround(buf, off) {
+    const strip = buildJourney().color;
+    for (let y = GROUND_Y; y < H; y++) {
+      const row = y * W, srow = y * JOURNEY_PERIOD;
+      for (let x = 0; x < W; x++) {
+        const c = strip[srow + ((x + off) % JOURNEY_PERIOD)];
+        if (c) buf[row + x] = c;
+      }
+    }
+  }
+
+  function drawGladeMist(p, off) {
+    const color = hex("#8992b5");
+    p.place(0, 0);
+    for (let copy = -1; copy <= 1; copy++) {
+      const left = FAR_PERIOD + copy * JOURNEY_PERIOD - off;
+      const right = left + FAR_PERIOD;
+      const x0 = Math.max(0, left), x1 = Math.min(W, right);
+      for (let x = x0; x < x1; x++) {
+        const u = (x - left) / FAR_PERIOD;
+        for (const [baseY, height, phase] of [[119, 4, 0.2], [130, 6, 1.4], [140, 4, 2.5]]) {
+          const drift = Math.round(Math.sin(u * Math.PI * 2 + phase) * 4);
+          for (let y = baseY + drift; y < baseY + drift + height; y++) {
+            if (bay(x, y) < 0.38 && ((x + y + Math.floor(time * 2)) % 3 !== 0)) p.blend(x, y, color, 0.26);
+          }
+        }
+      }
+    }
+  }
+
   function bakeMist(buf, m) {
     const mist = PAL[m].mist;
     for (let y = 112; y < GROUND_Y; y++) {
       const a = clamp((y - 112) / (GROUND_Y - 1 - 112));
-      const k = a * a * 0.4, row = y * W;
-      for (let x = 0; x < W; x++) if (bay(x, y) < k) buf[row + x] = mix(buf[row + x], mist, 0.22 + 0.3 * a);
+      const band = m === "fight" ? Math.sin((y * 0.22) + scrollX * 0.003) * 0.13 : 0;
+      const k = clamp(a * a * 0.4 + band, 0, 0.42), row = y * W;
+      for (let x = 0; x < W; x++) {
+        const drift = m === "fight" ? Math.sin((x + scrollX * 0.055) * 0.035 + y * 0.09) * 0.045 : 0;
+        if (bay(x, y) < clamp(k + drift, 0, 0.48)) buf[row + x] = mix(buf[row + x], mist, 0.22 + 0.3 * a);
+      }
     }
   }
 
@@ -624,11 +714,16 @@ export function createForest() {
     drawBack(frame) {
       const p = painterFor(frame);
       p.place(0, 0);
-      drawFxAlpha(frame, rays, "back", weights.fight * 0.42);
+      drawFxAlpha(frame, rays, "back", weights.fight * 0.16);
       const midOff = mod(Math.floor(scrollX * MID_SPEED), MID_PERIOD);
       const nearOff = mod(Math.floor(scrollX * NEAR_SPEED), NEAR_PERIOD);
+      if (weights.fight > 0.002) drawGladeMist(p, mod(Math.floor(scrollX * FAR_SPEED), JOURNEY_PERIOD));
       eachMode((m, fade) => blitStrip(frame, midFrame(m), midOff, fade));
       eachMode((m, fade) => blitStrip(frame, nearFrame(m), nearOff, fade));
+      if (weights.fight > 0.002) {
+        const journeyOff = mod(Math.floor(scrollX * FAR_SPEED), JOURNEY_PERIOD);
+        blitStrip(frame, buildJourney(), journeyOff, weights.fight);
+      }
       const lit = clamp(weights.camp + weights.night);
       if (lit > 0.01) {
         // a broad wash so the light channel warms the floor, trunks and bushes around the pit
@@ -643,9 +738,8 @@ export function createForest() {
     drawFront(frame) {
       const p = painterFor(frame);
       p.place(0, 0);
-      drawFxAlpha(frame, rays, "front", weights.fight * 0.42);
-      drawFxAlpha(frame, leaves, "front", weights.fight);
-      drawFxAlpha(frame, flies, "front", clamp(weights.camp * 0.9 + weights.night));
+      drawFxAlpha(frame, rays, "front", weights.fight * 0.16);
+      drawFxAlpha(frame, flies, "front", clamp(weights.camp * 0.9 + weights.night + weights.fight * 0.34));
       drawFireFront(p, clamp(weights.camp + weights.night));
       eachMode((m, fade) => drawGrassLayer(p, m, fade, time));
     },
@@ -674,8 +768,11 @@ function drawTrunk(p, t, x, pal) {
     return r > 0.22 ? pal.barkLit : pal.bark;
   });
   // roots
-  p.tri(x - w / 2, base - 2, x - w / 2 - Math.max(2, w * 0.5), base + 1, x - w / 2 + 1, base + 1, pal.bark);
-  p.tri(x + w / 2, base - 2, x + w / 2 + Math.max(2, w * 0.5), base + 1, x + w / 2 - 1, base + 1, pal.barkDark);
+  const root = Math.max(4, w * 1.25);
+  p.poly([[x - w / 2, base - 5], [x - w / 2 - root, base + 1], [x - w / 2 + 3, base + 1]], pal.bark);
+  p.poly([[x + w / 2, base - 5], [x + w / 2 + root, base + 1], [x + w / 2 - 3, base + 1]], pal.barkDark);
+  p.line(x - 2, base - 3, x - root * 0.7, base + 1, pal.barkLit);
+  p.line(x + 2, base - 2, x + root * 0.8, base + 1, pal.barkDark);
   // a branch and its leaf clump
   const by = base - t.h * t.branchAt, dir = t.branchSide;
   const len = 16 + rand(t.seed, 1) * 18;
@@ -688,6 +785,11 @@ function drawTrunk(p, t, x, pal) {
   p.circle(ex + r * 1.15, ey - r * 0.15, r * 0.6, pal.leafDark);
   p.circle(ex - r * 0.3, ey - r * 0.5, r * 0.55, pal.leafMid);
   p.dot(ex + r * 0.5, ey - r * 0.7, pal.leafLit);
+  const lowBy = base - t.h * (0.38 + rand(t.seed, 8) * 0.18), lowDir = -dir;
+  const lowLen = 9 + rand(t.seed, 9) * 10;
+  p.poly([[x + lowDir * 1, lowBy], [x + lowDir * 2, lowBy - 2], [x + lowDir * lowLen, lowBy - 5], [x + lowDir * lowLen, lowBy - 2]], pal.barkDark);
+  p.circle(x + lowDir * lowLen, lowBy - 5, 4, pal.leafDark);
+  p.dot(x + lowDir * (lowLen - 1), lowBy - 7, pal.leafLit);
   if (t.moss) {
     const m = base - t.h * 0.08;
     p.dot(x - w * 0.35, m, pal.moss);
