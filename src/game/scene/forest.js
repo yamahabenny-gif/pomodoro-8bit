@@ -1,5 +1,10 @@
 // CONTRACT (owned by issue "Wald & Lagerfeuer"). The forest at 320 x 180, parallax layers, floor at GROUND_Y.
 //
+// WAVE 4 (issue "Wald-Reise"): the fight look follows the journey reference: a deep dusk forest, purple-blue
+// shadows against an orange sunset band, mist between the trunks, gnarled trees with roots, fallen logs, mushrooms,
+// fireflies, and along the way a stream with a plank bridge. Breaks move to src/game/scene/rest.js; "camp"/"night"
+// stay as a fallback.
+//
 // createForest() returns:
 //   setMode(mode, { instant })   "fight" (day/afternoon, falling leaves) | "camp" (dusk, campfire lit,
 //                                fireflies) | "night" (long break: stars, bigger fire). Crossfades ~1.5 s.

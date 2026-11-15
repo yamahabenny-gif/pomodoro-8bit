@@ -66,14 +66,14 @@ oder über `rig.js`), weil pixelfx nur einen männlichen Stock-Helden und eine �
 | # | Paket | Worker | Modell | hängt ab von |
 |---|---|---|---|---|
 | 1 | Fundament (dieser Commit) | Claude (Koordinator) | Opus 5.5 | – |
-| 2 | Timer-Kern | OpenCode | `opencode/deepseek-v4.1-flash` | 1 |
+| 2 | Timer-Kern | OpenCode | `opencode-go/deepseek-v4.1-flash` | 1 |
 | 3 | Heldin | Codex (OpenAI-Abo) | `gpt-6-luna` | 1 |
 | 4 | Gegner: Gnom, Ork, Oger | Codex (OpenAI-Abo) | `gpt-6-luna` | 1 |
-| 5 | Wald & Lagerfeuer | OpenCode | `opencode/deepseek-v4.1-flash` | 1 |
-| 6 | UI: Menü & HUD | OpenCode | `opencode/deepseek-v4.1-flash` | 1 |
-| 7 | Sound & Benachrichtigung | OpenCode | `opencode/deepseek-v4.1-flash` | 1 |
+| 5 | Wald & Lagerfeuer | OpenCode | `opencode-go/deepseek-v4.1-flash` | 1 |
+| 6 | UI: Menü & HUD | OpenCode | `opencode-go/deepseek-v4.1-flash` | 1 |
+| 7 | Sound & Benachrichtigung | OpenCode | `opencode-go/deepseek-v4.1-flash` | 1 |
 | 8 | Regie (Integration) | Codex (OpenAI-Abo) | `gpt-6-luna` | 2–7 |
-| 9 | QA, Deploy, README | OpenCode | `opencode/deepseek-v4.1-flash` | 8 |
+| 9 | QA, Deploy, README | OpenCode | `opencode-go/deepseek-v4.1-flash` | 8 |
 
 Faustregel: große, kreative oder verzahnte Aufgaben (Pixel-Art-Figuren, Integration) an GPT-6 über Codex; klar
 umrissene Logik- und UI-Pakete an DeepSeek V4.1 Flash über OpenCode.
@@ -92,3 +92,25 @@ umrissene Logik- und UI-Pakete an DeepSeek V4.1 Flash über OpenCode.
 - Ton und Browser-Benachrichtigung am Phasenende.
 - Korrekte Zeit bei Hintergrund-Tab und Reload.
 - `npm test` grün, `npm run build` grün, läuft auf Desktop und Handy (Querformat), CI grün.
+
+## Ausbau: Wellen 4–6 (2026-11-15)
+Wünsche nach dem ersten Live-Stand: der Weg soll wie ein dichter Dämmerungswald aussehen (lila-blaue Schatten vor
+orangem Sonnenuntergang, Nebel, knorrige Bäume, Wurzeln, Pilze, Glühwürmchen, Bach mit Holzbrücke), Gegner nach
+Vorlage (muskulöser Halb-Ork mit Axt und Schild, neuer Steingolem mit glühenden Rissen), Heldin als kleine Ritterin
+(lange braune Haare, Plattenrüstung, roter Umhang, Krönchen-Helm), abwechslungsreiche Pausen (Gewitter mit Regen,
+sie sitzt im Unterschlupf und entzündet ein Feuer; Lagerfeuer am See mit Glühwürmchen), doppelt so viele Gegner und
+eine Level-Up-Leiste, die mit den Fokusminuten wächst.
+
+| # | Paket | Worker | Modell | Welle |
+|---|---|---|---|---|
+| 23 | Wald-Reise (Kampf-Look nach Referenz 1) | Codex | `gpt-6-luna` | 4 |
+| 24 | Rast-Szenen: Gewitter-Unterschlupf, See | Codex | `gpt-6-luna` | 4 |
+| 25 | Heldin neu (Referenz 5) + lightFire, levelUp | Codex | `gpt-6-luna` | 4 |
+| 26 | Gegner neu: Halb-Ork (Ref. 2), Steingolem (Ref. 3) | Codex | `gpt-6-luna` | 4 |
+| 27 | Level-Up: Fortschritt + XP-Leiste im HUD | OpenCode | `opencode-go/deepseek-v4.1-flash` | 4 |
+| 28 | Sound 2: levelUp, Donner, Entzünden, Regen/See | OpenCode | `opencode-go/deepseek-v4.1-flash` | 4 |
+| 29 | Regie 2: alles verdrahten, doppelte Gegnerfrequenz | Codex | `gpt-6-luna` | 5 |
+| 30 | QA 2, Deploy | OpenCode | `opencode-go/deepseek-v4.1-flash` | 6 |
+
+Neue Verträge: `src/game/scene/rest.js`, `src/game/progress/progress.js`; Erweiterungen als `WAVE 4/5`-Absätze in
+den bestehenden CONTRACT-Kommentaren.

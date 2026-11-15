@@ -7,14 +7,14 @@ liefert eine PR gegen `main`. Der Koordinator prüft, merged oder schickt Korrek
 ## Zuordnung
 | Issue | Worktree / Branch | Agent | Modell | Welle |
 |---|---|---|---|---|
-| #2 Timer-Kern | `issue-2-timer` | opencode | `opencode/deepseek-v4.1-flash` | 1 |
+| #2 Timer-Kern | `issue-2-timer` | opencode | `opencode-go/deepseek-v4.1-flash` | 1 |
 | #3 Heldin | `issue-3-heroine` | codex | `gpt-6-luna` | 1 |
 | #4 Gegner | `issue-4-enemies` | codex | `gpt-6-luna` | 1 |
-| #5 Wald & Lagerfeuer | `issue-5-forest` | opencode | `opencode/deepseek-v4.1-flash` | 1 |
-| #6 UI: Menü & HUD | `issue-6-ui` | opencode | `opencode/deepseek-v4.1-flash` | 1 |
-| #7 Sound & Benachrichtigung | `issue-7-audio` | opencode | `opencode/deepseek-v4.1-flash` | 1 |
+| #5 Wald & Lagerfeuer | `issue-5-forest` | opencode | `opencode-go/deepseek-v4.1-flash` | 1 |
+| #6 UI: Menü & HUD | `issue-6-ui` | opencode | `opencode-go/deepseek-v4.1-flash` | 1 |
+| #7 Sound & Benachrichtigung | `issue-7-audio` | opencode | `opencode-go/deepseek-v4.1-flash` | 1 |
 | #8 Regie | `issue-8-director` | codex | `gpt-6-luna` | 2 (nach Merge von #2–#7) |
-| #9 QA, Deploy, README | `issue-9-qa` | opencode | `opencode/deepseek-v4.1-flash` | 3 (nach #8) |
+| #9 QA, Deploy, README | `issue-9-qa` | opencode | `opencode-go/deepseek-v4.1-flash` | 3 (nach #8) |
 
 Weitere verfügbare Modelle, falls ein Paket hängt: OpenCode `opencode/deepseek-v4-pro`, `opencode/kimi-k3`,
 `opencode/glm-5.3`; Codex `gpt-6-sol`, `gpt-6.1-sol`, `gpt-6.1-terra`.

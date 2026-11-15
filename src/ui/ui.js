@@ -5,7 +5,10 @@
 //   showHud(preset?)             big mm:ss, phase label (Kampf / Rast / Lange Rast), cycle pips,
 //                                kill counter, buttons pause/resume, skip, reset, mute
 //                                (optional: the chosen preset, so the pips match this variant)
-//   render(timerState, stats)    update HUD; also sets document.title to "12:34 · Kampf"
+//   render(timerState, stats, progress?)  update HUD; also sets document.title to "12:34 · Kampf"
+//                                WAVE 4 (issue "Level-Up"): progress = createProgress().state(); an XP bar
+//                                "Lv 3" + fill + "12/25 min", and levelUp(level) shows a short LEVEL UP! banner.
+//                                The kill counter also shows "golem" once it exists.
 //   destroy()                    remove listeners (convenience, the director may never need it)
 // Keyboard: Space pause/resume, S skip, M mute, Esc back to menu (with confirm).
 //
