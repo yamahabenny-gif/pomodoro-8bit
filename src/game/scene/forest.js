@@ -12,7 +12,7 @@
 //   update(dt)
 //   background()                 Uint32Array(W*H) sky + far layers, the composite() background
 //   drawBack(frame)              mid layers + campfire back layer: behind characters
-//   drawFront(frame)             foreground grass + fire front layer: in front of characters
+//   drawFront(frame)             low grass (y >= 148) + fallback campfire front, never fight mist/trees
 //   campfireX                    where the heroine sits in "camp"/"night"
 //
 // Everything time-based runs off update(dt); no setTimeout. The sky, far treeline and ground are baked once
@@ -47,7 +47,7 @@ const mod = (v, m) => ((v % m) + m) % m;
 // change can dissolve the colours on the same silhouettes.
 const SKY = {
   fight: [
-    [0, "#22213d"], [0.22, "#343654"], [0.4, "#5d4a65"], [0.52, "#a85c54"], [0.61, "#ed8b4c"], [0.7, "#bd6650"], [0.84, "#59465e"], [1, "#27253a"],
+    [0, "#11152f"], [0.3, "#322746"], [0.49, "#66425b"], [0.60, "#ae634d"], [0.73, "#dc8c4e"], [0.84, "#bd704d"], [1, "#41405a"],
   ],
   camp: [
     [0, "#241f3a"], [0.3, "#463c56"], [0.52, "#704858"], [0.7, "#a85c50"], [0.85, "#cc7a4e"], [1, "#ecaa62"],
@@ -56,14 +56,14 @@ const SKY = {
 const PAL = {
   fight: {
     ink: "#17121f",
-    far: ["#302942", "#3b3150", "#493753"],
-    mist: "#8992b5",
-    bark: "#382530", barkLit: "#76503e", barkDark: "#211923", moss: "#48503a",
-    canopy: "#28263b", canopyLit: "#40364c",
-    leafDark: "#272532", leafMid: "#393544", leafLit: "#665342",
+    far: ["#302c4c", "#463653", "#64445f"],
+    mist: "#6a7894",
+    bark: "#302c35", barkLit: "#785945", barkDark: "#191c2d", moss: "#4a5740",
+    canopy: "#0e132a", canopyLit: "#252d3c",
+    leafDark: "#11162b", leafMid: "#303c3c", leafLit: "#9a7047",
     stem: "#393443",
     rockDark: "#393746", rockMid: "#514c5d", rockLit: "#736675",
-    grassDark: "#171a22", grassMid: "#343a31", grassTip: "#8b7650",
+    grassDark: "#192c30", grassMid: "#46583e", grassTip: "#918353",
     flower: "#d99b59",
   },
   camp: {
@@ -96,7 +96,7 @@ const SKY_STOPS = Object.fromEntries(MODES.filter((m) => SKY[m]).map((m) => [m, 
 
 const GROUND = {
   fight: {
-    stops: ["#49443c", "#34302e", "#292530", "#1d1b25"],
+    stops: ["#3c332f", "#2b252a", "#171724", "#0f1220"],
     pebble: "#514744", dark: "#17151d", litter: "#624536", moss: "#414333", clearing: "#3e3535",
   },
   camp: {
@@ -112,51 +112,18 @@ for (const g of Object.values(GROUND)) for (const [k, v] of Object.entries(g)) g
 const CLEARING_X = CAMPFIRE_X;
 
 // ---- layer geometry, same in every mode. Seeds are fixed, so a tree keeps its shape while it scrolls.
-const MID_TREES = Array.from({ length: 12 }, (_, i) => {
+const MID_TREES = Array.from({ length: 5 }, (_, i) => {
   const R = (k) => rand(501, i, k);
   return {
-    x: (i + 0.5) * (MID_PERIOD / 12) + (R(1) - 0.5) * 18,
-    h: 88 + R(2) * 70,
-    w: 2.5 + R(3) * 3.6,
+    x: (i + 0.5) * (MID_PERIOD / 5) + (R(1) - 0.5) * 18,
     lean: (R(4) - 0.5) * 24,
-    curve: (R(8) - 0.5) * 16,
-    moss: R(5) < 0.6,
-    branchSide: R(6) < 0.5 ? -1 : 1,
-    branchAt: 0.35 + R(7) * 0.42,
     seed: 900 + i,
   };
 });
-const MID_SAPLINGS = Array.from({ length: 4 }, (_, i) => {
-  const R = (k) => rand(551, i, k);
-  return {
-    x: (i + 0.5) * (MID_PERIOD / 4) + (R(1) - 0.5) * 70,
-    h: 34 + R(2) * 30,
-    r: 5 + R(3) * 5,
-    seed: 950 + i,
-  };
-});
-const CANOPY = Array.from({ length: 14 }, (_, i) => {
-  const R = (k) => rand(521, i, k);
-  return {
-    x: (i + 0.5) * (MID_PERIOD / 14) + (R(1) - 0.5) * 16,
-    y: -12 + R(2) * 11,
-    r: 9 + R(3) * 9,
-    lobes: Array.from({ length: 2 + Math.floor(R(4) * 3) }, (_, j) => ({ dx: (rand(522, i, j) - 0.5) * 34, dy: 6 + rand(523, i, j) * 16, r: 5 + rand(524, i, j) * 7 })),
-  };
-});
-const NEAR = ["bush", "bush", "fern", "rock", "bush", "mushrooms", "log", "fern"].map((type, i) => {
+const NEAR = ["fern", "log", "fern", "rock", "fern", "mushrooms", "log", "fern"].map((type, i) => {
   const R = (k) => rand(601, i, k);
   const item = { type, x: (i + 0.5) * (NEAR_PERIOD / 8) + (R(1) - 0.5) * 34, seed: 700 + i };
-  if (type === "bush") {
-    item.w = 16 + R(2) * 14;
-    item.h = 9 + R(3) * 9;
-    item.lobes = Array.from({ length: 4 }, (_, j) => ({
-      dx: (rand(602, i, j) - 0.5) * item.w,
-      dy: (rand(603, i, j) - 0.5) * item.h * 0.7,
-      r: 4 + rand(604, i, j) * 4.5,
-    }));
-    item.berry = R(5) < 0.4;
-  } else if (type === "fern") {
+  if (type === "fern") {
     item.h = 14 + R(2) * 9;
     item.n = 4 + Math.floor(R(3) * 3);
   } else if (type === "rock") {
@@ -174,14 +141,14 @@ const BLADES = (() => {
   // tufts of two or three blades, so the foreground reads as grass, not a picket fence
   for (let i = 0; i < 34; i++) {
     const R = (k) => rand(801, i, k);
-    const tx = R(1) * FRONT_PERIOD, base = GROUND_Y + 9 + R(2) * 19;
+    const tx = R(1) * FRONT_PERIOD, base = GROUND_Y + 2 + R(2) * 5;
     const n = 1 + Math.floor(R(3) * 3);
     for (let j = 0; j < n; j++) {
       const R2 = (k) => rand(802, i, j, k);
       out.push({
         x: tx + (j - (n - 1) / 2) * (1.6 + R2(1) * 2.6),
         base: base + R2(2) * 2,
-        h: 5 + R2(3) * (13 + R2(4) * 14),
+        h: 2 + R2(3) * 5,
         phase: R2(5) * TAU,
         sway: 0.6 + R2(6) * 2.6,
         tone: Math.floor(R2(7) * 3),
@@ -193,8 +160,8 @@ const BLADES = (() => {
     const R = (k) => rand(803, i, k);
     out.push({
       x: R(1) * FRONT_PERIOD,
-      base: GROUND_Y + 14 + R(2) * 15,
-      h: 3 + R(3) * 8,
+      base: GROUND_Y + 2 + R(2) * 5,
+      h: 2 + R(3) * 4,
       phase: R(4) * TAU,
       sway: 0.5 + R(5) * 1.8,
       tone: Math.floor(R(6) * 3),
@@ -218,6 +185,7 @@ export function createForest() {
   const farCache = {};
   const midCache = {};
   const nearCache = {};
+  const trunkCache = {};
   const bgCache = new Map();
   let journeyCache = null;
   let scratch = null;
@@ -243,7 +211,7 @@ export function createForest() {
         const steps = 5, s = f * steps, k = Math.floor(s), fr = s - k;
         const row = y * W;
         for (let x = 0; x < W; x++) {
-          const q = clamp((k + (fr > bay(x, y) ? 1 : 0)) / steps);
+          const q = m === "fight" ? Math.round(f * 8) / 8 : clamp((k + (fr > bay(x, y) ? 1 : 0)) / steps);
           out[row + x] = mix(c0, c1, q);
         }
       }
@@ -275,11 +243,11 @@ export function createForest() {
       const s = t * (stops.length - 1), k = Math.floor(s), fr = s - k;
       const row = y * W;
       for (let x = 0; x < W; x++) {
-        const q = clamp(k + (fr > bay(x, y) ? 1 : 0), 0, stops.length - 1);
+        const q = clamp(k + (fr > (m === "fight" ? rand(920, x >> 2, y >> 1) : bay(x, y)) ? 1 : 0), 0, stops.length - 1);
         let c = stops[q];
-        const r = rand(x >> 1, y, m === "fight" ? 21 : m === "camp" ? 22 : 23);
-        if (r > 0.93) c = mix(c, g.pebble, 0.55);
-        else if (r < 0.06) c = g.dark;
+        const r = rand(x >> 1, m === "fight" ? y >> 1 : y, m === "fight" ? 21 : m === "camp" ? 22 : 23);
+        if (r > 0.96) c = mix(c, g.pebble, 0.55);
+        else if (r < 0.03) c = g.dark;
         // a worn dirt clearing around the fire pit
         if (m !== "fight") {
           const dx = (x - CLEARING_X) / 34, dy = (y - GROUND_Y - 2) / 6;
@@ -288,6 +256,21 @@ export function createForest() {
         }
         out[row + x] = c;
       }
+    }
+    if (m === "fight") {
+      for (let x = 0; x < W; x++) {
+        const depth = 5 + Math.floor(rand(925, x >> 1) * 4);
+        for (let y = GROUND_Y; y < GROUND_Y + depth; y++) {
+          const c = y < GROUND_Y + 2 ? PAL[m].grassTip : y < GROUND_Y + 5 ? PAL[m].grassMid : PAL[m].grassDark;
+          set(out, x, y, rand(926, x, y) < 0.22 ? g.moss : c);
+        }
+      }
+    }
+    if (m === "fight") for (let i = 0; i < 50; i++) {
+      const x = Math.floor(rand(927, i, 1) * W), y = 159 + Math.floor(rand(927, i, 2) * 7);
+      const c = i % 3 ? g.pebble : g.moss;
+      for (const [dx, dy] of [[0, 0], [1, -1], [2, -1], [3, 0], [1, 1]]) set(out, x + dx, y + dy, c);
+      set(out, x + 1, y + 2, g.dark);
     }
     // pebbles, roots and leaf litter
     for (let i = 0; i < 44; i++) {
@@ -341,12 +324,15 @@ export function createForest() {
         p.circle(x + dx + r * 0.5, y + 1, r * 0.55, c);
       }
     }
-    for (let i = 0; i < 28; i++) {
-      const x = (i + 0.5) * (FAR_PERIOD / 28) + (R(i, 11) - 0.5) * 12;
-      const h = 44 + R(i, 12) * 66, c = pal.far[Math.floor(R(i, 13) * pal.far.length)];
-      const width = 1.2 + R(i, 14) * 2.2;
-      for (const dx of [-FAR_PERIOD, 0, FAR_PERIOD]) {
-        drawFarSilhouette(p, x + dx, GROUND_Y, h, width, c, R(i, 15) * 8 - 4);
+    // Overlapping broadleaf silhouettes: distant crowns have no outlines or bark detail.
+    for (let layer = 2; layer >= 0; layer--) {
+      for (let i = 0; i < 14; i++) {
+        const x = i * FAR_PERIOD / 14 + R(i + layer * 30, 11) * 18;
+        const h = 85 + R(i + layer * 30, 12) * 45;
+        for (const dx of [-FAR_PERIOD, 0, FAR_PERIOD]) {
+          drawFarSilhouette(p, x + dx, 142 - layer * 3, h, 1.8 + R(i, 14) * 1.8,
+            pal.far[layer], R(i, 15) * 15 - 7);
+        }
       }
     }
     farCache[m] = f;
@@ -359,6 +345,7 @@ export function createForest() {
     farFrame(m);
     midFrame(m);
     nearFrame(m);
+    trunkFrame(m);
     compose(m);
   }
 
@@ -391,17 +378,25 @@ export function createForest() {
     p.place(0, 0);
     const ink = hex("#17121f"), water = [hex("#111626"), hex("#222b40"), hex("#30394d")];
     const moss = hex("#526341"), mossLight = hex("#71804c"), bark = hex("#56392c");
-    drawAncientTree(p, 24, PAL.fight, 3301);
-    drawAncientTree(p, 748, PAL.fight, 3302);
-    // A fallen trunk and its broken limbs cross the forest floor.
-    p.ellipse(260, 151, 42, 3, ink, 0.8);
-    p.poly([[220, 151], [224, 146], [233, 144], [284, 145], [298, 148], [301, 151]], ink);
-    p.poly([[225, 149], [229, 147], [236, 146], [283, 147], [294, 149], [296, 150]], hex("#4a3028"));
-    p.line(232, 147, 286, 148, hex("#88563a"));
-    p.line(245, 146, 238, 139, ink); p.line(238, 139, 233, 138, bark);
-    p.line(271, 146, 279, 140, ink); p.line(279, 140, 285, 139, bark);
-    p.ellipse(224, 148, 4, 3, hex("#9b6640"), 0.9);
-    p.ellipse(222, 148, 2, 2, hex("#402a27"), 1);
+    // Fallen wood rests along the bank, with a split cut end and broken limbs.
+    p.poly([[58, 151], [59, 144], [65, 139], [70, 144], [97, 146], [110, 142],
+      [107, 148], [111, 152]], ink);
+    p.poly([[62, 149], [63, 143], [69, 146], [97, 148], [104, 146], [103, 151]], bark);
+    p.line(66, 146, 98, 149, hex("#8a6546"));
+    p.line(67, 148, 91, 151, hex("#211d27"));
+    p.line(83, 147, 79, 141, bark);
+    p.line(79, 141, 76, 139, hex("#8a6546"));
+    p.poly([[64, 149], [67, 147], [71, 148], [69, 150]], ink);
+    p.line(92, 147, 101, 147, moss);
+    const sx = 176;
+    p.poly([[sx - 19, 153], [sx - 7, 143], [sx - 4, 127], [sx, 134], [sx + 6, 130],
+      [sx + 9, 122], [sx + 11, 139], [sx + 8, 149], [sx + 20, 155]], ink);
+    p.poly([[sx - 13, 152], [sx - 3, 142], [sx - 2, 133], [sx + 2, 137],
+      [sx + 7, 131], [sx + 7, 143], [sx + 3, 150]], bark);
+    p.line(sx - 1, 137, sx - 6, 149, hex("#997348"));
+    p.line(sx + 5, 138, sx + 2, 145, hex("#2b2026"));
+    p.line(sx - 13, 151, sx - 5, 149, moss);
+    p.line(sx - 15, 152, sx - 8, 150, mossLight);
     const stumpX = FAR_PERIOD + 210;
     // The middle stretch opens into a mossy glade with a stump, fungi and a low fallen log.
     p.ellipse(stumpX + 28, GROUND_Y + 1, 25, 3, ink, 0.7);
@@ -486,24 +481,18 @@ export function createForest() {
   }
 
   function drawFightMist(p) {
-    const color = hex("#8992b5");
     p.place(0, 0);
+    // Continuous alpha volumes, never ordered dither; all mist is behind actors.
     for (let x = 0; x < W; x++) {
-      for (let i = 0; i < 2; i++) {
-        const center = 120 + i * 17 + Math.sin((x - time * 2.4) * 0.025 + i * 1.7) * 2.2;
-        const height = i === 0 ? 5 : 4;
-        for (let y = Math.floor(center - height / 2); y <= Math.ceil(center + height / 2); y++) {
-          if (bay(x, y) < 0.58) p.blend(x, y, color, i === 0 ? 0.36 : 0.3);
-        }
+      const wx = x + scrollX * FAR_SPEED;
+      const center = 130 + Math.sin(wx * 0.035 - time * 0.12) * 6
+        + Math.sin(wx * 0.071 + 1.4) * 2;
+      const density = 0.30 + 0.18 * Math.sin(wx * 0.021 + time * 0.09);
+      for (let y = 108; y < GROUND_Y; y++) {
+        const d = (y - center) / (10 + 4 * Math.sin(wx * 0.018));
+        const a = Math.max(0, 1 - d * d);
+        if (a > 0) p.blend(x, y, PAL.fight.mist, a * a * density * weights.fight);
       }
-    }
-  }
-
-  function drawThinRays(p) {
-    p.place(0, 0);
-    const warm = hex("#e8a06a");
-    for (const [top, drift] of [[66, 18], [254, -14]]) {
-      for (let y = 20; y < 112; y++) p.dot(Math.round(top + ((y - 20) / 92) * drift), y, warm, 0.16);
     }
   }
 
@@ -518,7 +507,8 @@ export function createForest() {
       const x = rand(941, i, 2) * W + Math.sin(time * 0.22 + phase) * 3;
       const y = 103 + rand(941, i, 3) * 39 + Math.sin(time * 0.42 + phase) * 2;
       const color = i % 2 ? amber : gold;
-      p.glow(x, y, 5 + pulse * 3, color, 0.32 * pulse * amount);
+      // Color alpha stays behind sprites; additive frame light would shine through actors.
+      p.disc(x, y, 3 + pulse * 2, color, (d) => (1 - d) ** 2 * 0.22 * pulse * amount);
       p.dot(x, y, color, pulse * amount);
       if (pulse > 0.72) p.dot(x + 1, y - 1, gold, (pulse - 0.6) * amount);
     }
@@ -556,40 +546,36 @@ export function createForest() {
     const p = painterFor(f);
     p.place(0, 0);
     const pal = PAL[m];
-    // Broken leaf masses hang from the top edge and leave thin windows to the sunset.
-    for (const c of CANOPY) wrapDraw(p, MID_PERIOD, c.x, (x) => {
-      drawLeafMass(p, x, c.y, c.r, pal, Math.round(c.x));
-      for (const l of c.lobes) {
-        const lx = x + l.dx, ly = c.y + l.dy + c.r * 0.5;
-        drawLeafMass(p, lx, ly, l.r, pal, Math.round(c.x + l.dx));
-      }
-      for (let i = 0; i < 6; i++) {
-        const dx = (rand(531, Math.round(c.x), i) - 0.5) * c.r * 1.7;
-        const len = 2 + rand(532, Math.round(c.x), i) * 7;
-        p.rect(x + dx, c.y + c.r * 0.7 + rand(533, Math.round(c.x), i) * 8, 1, len, i % 3 ? pal.canopy : pal.canopyLit);
-      }
-      // a few leaf tips biting into the sky along the underside
-      for (let i = 0; i < 12; i++) {
-        const lx = x + (rand(534, Math.round(c.x), i) - 0.5) * c.r * 1.9;
-        const ly = c.y + c.r * 0.85 + rand(535, Math.round(c.x), i) * 7;
-        p.px(lx, ly, i % 4 ? pal.canopy : pal.canopyLit);
-        if (i % 3 === 0) p.px(lx + 1, ly + 1, pal.canopy);
-      }
-    });
-    for (const t of MID_TREES) wrapDraw(p, MID_PERIOD, t.x, (x) => drawTrunk(p, t, x, pal));
-    for (const s of MID_SAPLINGS) wrapDraw(p, MID_PERIOD, s.x, (x) => drawSapling(p, s, x, pal));
-    // a few far bushes between the trunks
-    for (let i = 0; i < 5; i++) {
-      const x0 = (i + 0.5) * (MID_PERIOD / 5) + (rand(541, i, 1) - 0.5) * 44;
+    // Low angular bracken merges the trunk bases into the forest floor.
+    for (let i = 0; i < 32; i++) {
+      const x0 = i * MID_PERIOD / 32;
       wrapDraw(p, MID_PERIOD, x0, (x) => {
-        const r = 6 + rand(541, i, 2) * 8;
-        p.circle(x, GROUND_Y - r * 0.45, r * 0.8, pal.leafDark);
-        p.circle(x - r * 0.6, GROUND_Y - r * 0.25, r * 0.5, pal.leafDark);
-        p.circle(x + r * 0.55, GROUND_Y - r * 0.3, r * 0.5, pal.leafDark);
-        p.circle(x - 1, GROUND_Y - r * 0.5, r * 0.45, pal.leafMid);
+        const h = 4 + (0.5 + 0.5 * Math.sin(i * 0.95)) * 22;
+        p.poly([[x - 17, 151], [x - 13, 144], [x - 16, 140], [x - 7, 141],
+          [x - 10, 151 - h], [x - 4, 145 - h], [x, 148 - h], [x + 2, 142 - h],
+          [x + 6, 151 - h], [x + 13, 137], [x + 11, 145], [x + 21, 151]], pal.canopy);
+      });
+    }
+    // A continuous roof and two large trees frame openings into the distant forest.
+    for (const t of MID_TREES) wrapDraw(p, MID_PERIOD, t.x, (x) => drawTrunk(p, t, x, pal));
+    for (let i = 0; i < 18; i++) {
+      const x0 = i * MID_PERIOD / 18;
+      wrapDraw(p, MID_PERIOD, x0, (x) => {
+        const y = 8 + Math.sin(i * 1.8) * 12;
+        drawLeafMass(p, x, y, 38 + rand(531, i) * 12, pal, 800 + i);
       });
     }
     midCache[m] = f;
+    return f;
+  }
+
+  function trunkFrame(m) {
+    if (trunkCache[m]) return trunkCache[m];
+    const f = createFrame(MID_PERIOD, H), p = painterFor(f);
+    p.place(0, 0);
+    for (const x0 of [-12, 202]) wrapDraw(p, MID_PERIOD, x0,
+      (x) => drawAncientTree(p, x, PAL[m], 3301 + x0));
+    trunkCache[m] = f;
     return f;
   }
 
@@ -633,16 +619,17 @@ export function createForest() {
         const u = r / b.h;
         const px = Math.round(x + sway * u * u), py = Math.round(b.base - r);
         const c = u > 0.82 ? (b.tone === 0 ? pal.grassTip : pal.grassMid) : u > 0.4 ? pal.grassMid : pal.grassDark;
+        if (py < GROUND_Y - 2) continue;
         p.px(px, py, c);
         if (b.tone === 0 && u < 0.55) p.px(px + 1, py, pal.grassDark);
         if (u > 0.3 && u < 0.7 && r % 3 === 0) p.px(px - 1, py + 1, pal.grassDark);
       }
       const tipX = Math.round(x + sway), tipY = Math.round(b.base - b.h);
-      if (b.tone === 0 && b.h > 13) {
+      if (tipY >= GROUND_Y - 2 && b.tone === 0 && b.h > 13) {
         p.px(tipX - 1, tipY + 1, pal.grassMid);
         p.px(tipX + 1, tipY + 2, pal.grassMid);
       }
-      if (b.h > 18 && b.tone === 2) p.px(tipX, tipY - 1, pal.grassTip);
+      if (tipY >= GROUND_Y - 1 && b.h > 18 && b.tone === 2) p.px(tipX, tipY - 1, pal.grassTip);
     });
     p.fade = 1;
   }
@@ -759,16 +746,17 @@ export function createForest() {
     drawBack(frame) {
       const p = painterFor(frame);
       p.place(0, 0);
-      if (weights.fight > 0.002) drawThinRays(p);
       const midOff = mod(Math.floor(scrollX * MID_SPEED), MID_PERIOD);
       const nearOff = mod(Math.floor(scrollX * NEAR_SPEED), NEAR_PERIOD);
-      if (weights.fight > 0.002) drawFightMist(p);
       eachMode((m, fade) => blitStrip(frame, midFrame(m), midOff, fade));
+      if (weights.fight > 0.002) drawFightMist(p);
+      eachMode((m, fade) => blitStrip(frame, trunkFrame(m), midOff, fade));
       eachMode((m, fade) => blitStrip(frame, nearFrame(m), nearOff, fade));
       if (weights.fight > 0.002) {
         const journeyOff = mod(Math.floor(scrollX * FAR_SPEED), JOURNEY_PERIOD);
         blitStrip(frame, buildJourney(), journeyOff, weights.fight);
       }
+      drawFightFireflies(p, weights.fight);
       const lit = clamp(weights.camp + weights.night);
       if (lit > 0.01) {
         // a broad wash so the light channel warms the floor, trunks and bushes around the pit
@@ -784,7 +772,6 @@ export function createForest() {
       const p = painterFor(frame);
       p.place(0, 0);
       drawFxAlpha(frame, flies, "front", clamp(weights.camp * 0.9 + weights.night));
-      drawFightFireflies(p, weights.fight);
       drawFireFront(p, clamp(weights.camp + weights.night));
       eachMode((m, fade) => drawGrassLayer(p, m, fade, time));
     },
@@ -794,163 +781,105 @@ export function createForest() {
 
 // ---- shared tree shapes
 function drawLeafMass(p, x, y, radius, pal, seed) {
-  const contour = [
-    [-0.92, 0.16], [-0.82, -0.35], [-0.56, -0.58], [-0.36, -0.93], [-0.08, -0.73],
-    [0.21, -0.96], [0.43, -0.66], [0.82, -0.55], [0.7, -0.16], [0.98, 0.14],
-    [0.63, 0.32], [0.47, 0.65], [0.13, 0.47], [-0.19, 0.72], [-0.48, 0.43], [-0.84, 0.48],
-  ];
-  const hull = contour.map(([dx, dy]) => [x + dx * radius, y + dy * radius * 0.72]);
-  p.poly(hull, pal.leafDark);
-  for (let i = 0; i < contour.length; i++) {
-    if (rand(seed, i, 5) > 0.58) continue;
-    const a = hull[i], b = hull[(i + 1) % hull.length];
-    p.line(a[0], a[1], b[0], b[1], pal.ink);
+  // Small serrated lobes overlap into one broad crown, with light on the upper-right rim.
+  p.ellipse(x, y, radius * 0.85, radius * 0.45, pal.leafDark);
+  for (let i = 0; i < 32; i++) {
+    const a = i / 32 * TAU;
+    const cx = x + Math.cos(a) * radius * (0.72 + rand(seed, i, 1) * 0.22);
+    const cy = y + Math.sin(a) * radius * 0.43;
+    const r = 3 + rand(seed, i, 2) * 5;
+    p.poly([[cx - r, cy], [cx - r + 1, cy - 2], [cx - 2, cy - 2], [cx - 2, cy - r],
+      [cx + 1, cy - r + 2], [cx + r, cy - 3], [cx + r - 1, cy + 1],
+      [cx + r + 2, cy + 2], [cx + 2, cy + 3], [cx, cy + r], [cx - 2, cy + 2]], pal.leafDark);
+    if (Math.sin(a) < -0.2 && rand(seed, i, 3) > 0.35) {
+      p.poly([[cx - 3, cy - 1], [cx - 1, cy - 4], [cx + 1, cy - 3],
+        [cx + 4, cy - 4], [cx + 3, cy], [cx, cy + 1]], pal.leafMid);
+      p.line(cx - 1, cy - 4, cx + 1, cy - 3, pal.leafLit);
+      p.px(cx + 3, cy - 4, pal.leafLit);
+      p.px(cx + 4, cy - 1, pal.canopyLit);
+    }
   }
-  for (let i = 0; i < 3; i++) {
-    const dx = (rand(seed, i, 2) - 0.5) * radius * 0.8;
-    const dy = (rand(seed, i, 3) - 0.5) * radius * 0.35;
-    const size = Math.max(1.5, radius * (0.18 + rand(seed, i, 4) * 0.1));
-    p.poly([[x + dx, y + dy], [x + dx + size, y + dy - 1], [x + dx + size + 1, y + dy + 1], [x + dx + 1, y + dy + 2]], i === 0 ? pal.leafMid : pal.canopyLit);
-    if (i === 1) p.px(x + dx + size, y + dy, pal.leafLit);
+  if (y > 28) for (let i = 0; i < 10; i++) {
+    const cx = x + (rand(seed, i, 11) - 0.5) * radius * 1.3;
+    const cy = y + (rand(seed, i, 12) - 0.65) * radius * 0.45;
+    p.poly([[cx - 2, cy], [cx, cy - 2], [cx + 1, cy - 1], [cx + 4, cy - 2],
+      [cx + 3, cy + 1], [cx, cy + 2]], i % 3 ? pal.canopyLit : pal.leafMid);
+    if (i % 4 === 0) p.line(cx + 1, cy - 2, cx + 3, cy - 3, pal.leafLit);
   }
+
 }
 
 function drawFarSilhouette(p, x, base, height, width, color, lean) {
-  const top = base - height, mid = x + lean * 0.45;
-  p.poly([[x - width, base], [x + width, base], [mid + width * 0.55, top + height * 0.45], [mid + width * 0.3, top], [mid - width * 0.3, top], [mid - width * 0.55, top + height * 0.45]], color);
-  const branchY = top + height * 0.32;
-  for (const side of [-1, 1]) {
-    const endX = mid + side * (8 + width * 2), endY = branchY - 5;
-    p.poly([[mid, branchY + 5], [mid + side * 1.3, branchY + 5], [endX, endY + 1], [endX, endY - 1]], color);
+  const top = base - height, mid = x + lean;
+  p.poly([[x - width * 1.5, base], [x + width, base], [mid + width * 0.7, top + 12],
+    [mid - width * 0.7, top + 10], [x - width * 1.8 + lean, base - height * 0.4]], color);
+  for (let i = 0; i < 9; i++) {
+    const dx = (rand(Math.round(x), i, 3) - 0.5) * 36;
+    const dy = rand(Math.round(x), i, 4) * 23;
+    p.ellipse(mid + dx, top + dy, 9 + rand(i, Math.round(x)) * 9, 9 + dy * 0.25, color);
   }
 }
 
 function drawAncientTree(p, x, pal, seed) {
-  const base = GROUND_Y + 2;
-  const ys = [base, 124, 91, 57, 23, -12];
-  const centers = [x, x - 6, x - 8, x + 1, x + 14, x + 20];
-  const widths = [19, 15, 12, 9, 6, 3];
-  const left = [], right = [];
-  for (let i = 0; i < ys.length; i++) {
-    left.push([centers[i] - widths[i], ys[i]]);
-    right.unshift([centers[i] + widths[i], ys[i]]);
+  // Broad buttress, a twisting trunk and forked limbs; no straight pole reaches the crown.
+  p.poly([[x - 37, 153], [x - 20, 143], [x - 9, 119], [x - 4, 96], [x + 7, 78],
+    [x + 10, 59], [x + 4, 42], [x - 6, 25], [x - 3, 17], [x + 13, 37],
+    [x + 18, 54], [x + 29, 31], [x + 43, 20], [x + 48, 21], [x + 34, 38],
+    [x + 24, 65], [x + 23, 84], [x + 11, 110], [x + 10, 135], [x + 19, 147],
+    [x + 41, 156], [x + 22, 159], [x + 2, 145], [x - 14, 155]], pal.ink);
+  p.poly([[x - 28, 151], [x - 14, 140], [x - 4, 114], [x + 2, 95], [x + 12, 78],
+    [x + 14, 57], [x + 8, 40], [x + 17, 54], [x + 19, 75], [x + 15, 94],
+    [x + 7, 117], [x + 5, 139], [x + 25, 155], [x + 4, 145], [x - 1, 139], [x - 10, 149]], pal.bark);
+  for (const [side, by, reach] of [[-1, 75, 41], [1, 100, 39], [-1, 44, 28]]) {
+    const bx = x + 10, ex = bx + side * reach;
+    p.poly([[bx, by + 7], [bx + side * 11, by - 4], [ex - side * 9, by - 22],
+      [ex + side * 10, by - 25], [ex + side * 11, by - 21], [ex - side * 7, by - 18],
+      [bx + side * 12, by + 3], [bx, by + 15]], pal.ink);
+    p.poly([[bx, by + 5], [bx + side * 11, by], [ex - side * 8, by - 19],
+      [ex + side * 7, by - 23], [ex - side * 8, by - 21], [bx + side * 12, by - 2]], pal.bark);
+    p.line(bx, by + 5, ex - side * 9, by - 20, pal.barkLit);
+    drawLeafMass(p, ex, by - 26, 22, pal, seed + by);
   }
-  p.poly([...left, ...right], pal.ink);
-  const body = left.map(([px, py], i) => [px + (i === 0 ? 2 : 1), py]);
-  const innerRight = right.map(([px, py], i) => [px - (i === 5 ? 3 : 1), py]);
-  p.poly([...body, ...innerRight], pal.bark);
-  p.poly([[x - 14, 130], [x - 5, 126], [x + 8, 126], [x + 17, 131], [x + 47, 150], [x + 22, 151], [x + 8, 140], [x - 2, 137], [x - 22, 151], [x - 49, 151]], pal.ink);
-  p.poly([[x - 12, 131], [x - 4, 129], [x + 7, 129], [x + 15, 134], [x + 40, 149], [x + 24, 149], [x + 8, 136], [x - 2, 134], [x - 23, 149], [x - 42, 149]], pal.bark);
-  p.line(x - 10, 128, x - 39, 149, pal.barkLit);
-  p.line(x + 9, 129, x + 34, 148, pal.barkDark);
-  // Forks bend upward and split into irregular clusters instead of ending in round puffs.
-  p.poly([[x - 3, 80], [x - 1, 76], [x - 29, 47], [x - 48, 39], [x - 47, 35], [x - 25, 42], [x + 1, 67], [x + 4, 75]], pal.ink);
-  p.poly([[x + 5, 60], [x + 8, 57], [x + 29, 33], [x + 52, 28], [x + 53, 31], [x + 32, 37], [x + 11, 66]], pal.ink);
-  p.poly([[x + 9, 84], [x + 12, 80], [x + 37, 65], [x + 57, 67], [x + 56, 70], [x + 39, 70], [x + 15, 89]], pal.ink);
-  p.line(x + 17, 42, x + 29, 27, pal.barkLit);
-  drawLeafMass(p, x - 49, 32, 13, pal, seed + 1);
-  drawLeafMass(p, x + 54, 24, 14, pal, seed + 2);
-  drawLeafMass(p, x + 62, 66, 12, pal, seed + 3);
-  // Mossy seams and hanging vines break the trunk silhouette.
-  p.line(x - 9, 73, x - 7, 87, pal.moss);
-  p.line(x - 7, 87, x - 10, 98, pal.moss);
-  p.line(x + 6, 102, x + 9, 114, pal.moss);
-  p.line(x + 9, 114, x + 7, 127, pal.moss);
-  for (let i = 0; i < 4; i++) {
-    const vx = x - 20 + i * 13, vy = 53 + (i % 2) * 12, len = 11 + rand(seed, i) * 13;
-    p.line(vx, vy, vx + 1, vy + len, pal.barkDark);
-    p.line(vx + 1, vy + len, vx - 2, vy + len + 4, pal.moss);
+  drawLeafMass(p, x + 35, 18, 39, pal, seed);
+  for (let i = 0; i < 6; i++) {
+    const dx = i * 2;
+    p.line(x + 11 + dx, 59, x + 7 + dx, 86, i % 2 ? pal.barkDark : pal.barkLit);
+    p.line(x + 7 + dx, 86, x - 7 + dx, 120, i % 2 ? pal.barkDark : pal.barkLit);
+    p.line(x - 7 + dx, 120, x - 12 + dx, 140, pal.barkDark);
   }
-  for (let i = 0; i < 9; i++) {
-    const y = 34 + i * 10, cx = x + (y < 60 ? 8 : Math.sin(y * 0.05) * 3);
-    p.line(cx - 3, y, cx + 2, y + 3, i % 2 ? pal.barkDark : pal.barkLit);
-    p.px(cx + 4, y + 5, pal.ink);
+  p.ellipse(x + 12, 82, 3, 5, pal.ink);
+  p.line(x + 8, 77, x + 7, 83, pal.barkLit);
+  for (const [dx, dy, ex, ey] of [[-5, 123, -30, 154], [1, 135, -15, 163], [7, 135, 33, 161]]) {
+    p.line(x + dx, dy, x + ex, ey, pal.barkLit);
+    p.line(x + dx + 2, dy + 3, x + ex + 2, ey + 1, pal.barkDark);
+    p.line(x + dx - 2, dy + 5, x + ex - 3, ey - 1, pal.moss);
   }
+  for (let i = 0; i < 24; i++) {
+    const y = 104 + rand(seed, i, 7) * 46;
+    const dx = y < 125 ? 2 - (y - 104) * 0.38 : -6 - (y - 125) * 0.65;
+    const xx = x + dx + rand(seed, i, 8) * 5;
+    p.line(xx, y, xx + 2, y - 1, i % 3 ? pal.moss : pal.grassDark);
+    if (i % 4 === 0) p.px(xx + 1, y - 2, pal.grassTip);
+  }
+
 }
 
 function drawTrunk(p, t, x, pal) {
-  const base = GROUND_Y + 2, top = base - t.h, w = t.w;
-  const centerAt = (u) => x + t.lean * u + t.curve * Math.sin(u * Math.PI * 1.6) * u;
-  const halfAt = (u) => w * (0.62 - u * 0.28);
-  const left = [], right = [];
-  for (let i = 0; i <= 6; i++) {
-    const u = i / 6, y = base - u * t.h, cx = centerAt(u), half = halfAt(u);
-    left.push([cx - half - 0.8, y]);
-    right.unshift([cx + half + 0.8, y]);
+  const c = pal.canopy, top = 20 + rand(t.seed, 1) * 25;
+  const bend = t.lean * 0.7;
+  p.poly([[x - 9, 150], [x - 3, 119], [x + bend - 4, 88], [x + bend - 2, top],
+    [x + bend + 4, top], [x + bend + 5, 94], [x + 4, 125], [x + 10, 150]], c);
+  for (const side of [-1, 1]) {
+    const bx = x + bend + side * 24, by = top + 26 + side * 12;
+    p.poly([[x, 100], [x + bend, 74], [bx, by], [bx + side * 14, by - 5],
+      [bx + side * 13, by - 2], [bx, by + 5], [x + bend + 3, 82]], c);
+    drawLeafMass(p, bx + side * 7, by - 6, 17, { ...pal, leafMid: c, leafLit: pal.canopyLit }, t.seed);
   }
-  p.poly([...left, ...right], pal.ink);
-  p.poly(left.map(([px, py], i) => [px + 1, py]).concat(right.map(([px, py]) => [px - 1, py])), (px, py) => py > base - 8 ? pal.barkDark : pal.bark);
-  for (let i = 0; i < 6; i++) {
-    const u0 = i / 6, u1 = (i + 1) / 6;
-    p.line(centerAt(u0) - halfAt(u0) * 0.35, base - u0 * t.h, centerAt(u1) - halfAt(u1) * 0.35, base - u1 * t.h, i % 2 ? pal.barkLit : pal.bark);
-  }
-  const root = Math.max(5, w * 2.4);
-  p.poly([[x - w * 0.5, base - 7], [x - root, base + 2], [x - w * 0.1, base + 1]], pal.barkDark);
-  p.poly([[x + w * 0.5, base - 6], [x + root, base + 2], [x + w * 0.1, base + 1]], pal.barkDark);
-  p.line(x - 2, base - 5, x - root * 0.85, base + 1, pal.barkLit);
-  p.line(x + 1, base - 4, x + root * 0.82, base + 1, pal.bark);
-  const makeBranch = (u, side, length, seed) => {
-    const by = base - t.h * u, cx = centerAt(u);
-    const mx = cx + side * length * 0.56, my = by - length * 0.48;
-    const ex = cx + side * length, ey = by - length * 0.72;
-    p.poly([[cx, by + 2], [cx + side * 2, by], [mx, my + 2], [ex, ey - 1], [ex + side, ey + 2], [mx + side, my + 5]], pal.barkDark);
-    p.line(cx, by, mx, my + 2, pal.barkLit);
-    p.line(mx, my + 3, ex, ey + 1, pal.bark);
-    drawLeafMass(p, ex, ey - 1, 3.4 + rand(seed, 4) * 3.2, pal, seed);
-  };
-  makeBranch(t.branchAt, t.branchSide, 11 + rand(t.seed, 1) * 16, t.seed);
-  makeBranch(0.42 + rand(t.seed, 2) * 0.28, -t.branchSide, 9 + rand(t.seed, 3) * 13, t.seed + 1);
-  if (t.moss) {
-    const u = 0.08, m = base - t.h * u;
-    p.line(centerAt(u) - 1, m, centerAt(u) + 1, m + 5, pal.moss);
-    p.px(centerAt(u) + 2, m + 6, pal.moss);
-  }
-  for (let i = 0; i < 2; i++) {
-    const u = 0.45 + i * 0.24, cx = centerAt(u), y = base - u * t.h;
-    p.line(cx + 1, y, cx + 2, y + 8 + i * 2, pal.barkDark);
-    p.line(cx + 2, y + 8 + i * 2, cx - 1, y + 11 + i * 2, pal.moss);
-  }
-  if (t.moss) {
-    const m = base - t.h * 0.08;
-    p.dot(x - w * 0.35, m, pal.moss);
-    p.dot(x - w * 0.35 + 1, m + 1, pal.moss);
-    p.dot(x - w * 0.5, m + 2, pal.moss);
-  }
-  for (let i = 0; i < 5; i++) {
-    const yy = top + 12 + rand(t.seed, i, 2) * (t.h - 14);
-    p.px(x - w * 0.18 + rand(t.seed, i, 3) * w * 0.35, yy, pal.ink);
-    if (i % 2 === 0) p.px(x - w * 0.1 + rand(t.seed, i, 4) * w * 0.3, yy + 1, pal.ink);
-  }
-}
-
-function drawSapling(p, s, x, pal) {
-  const base = GROUND_Y + 2, top = base - s.h;
-  p.ellipse(x, GROUND_Y + 2, 5, 1.6, pal.ink, 0.3);
-  p.rect(x - 1, top, 3, s.h, pal.ink);
-  p.rect(x, top + 2, 1, s.h - 3, pal.bark);
-  p.px(x, top + 4, pal.barkLit);
-  const dir = rand(s.seed, 9) < 0.5 ? -1 : 1, r = s.r;
-  drawLeafMass(p, x, top - 1, r, pal, s.seed);
-  drawLeafMass(p, x + dir * r, top + r * 0.4, r * 0.55, pal, s.seed + 1);
-  p.dot(x + r * 0.55, top + r * 0.1, pal.leafLit);
-  p.line(x, top + r * 0.8, x + dir * r * 0.8, top + r * 1.3, pal.barkDark);
 }
 
 function drawNearItem(p, item, x, pal) {
   const base = GROUND_Y + 2;
-  if (item.type === "bush") {
-    p.ellipse(x, base, item.w * 0.62, 2.2, pal.ink, 0.4);
-    p.line(x, base, x - 1, base - item.h * 0.55, pal.stem);
-    for (const l of item.lobes) {
-      p.circle(x + l.dx, base - item.h * 0.45 + l.dy, l.r + 1, pal.ink);
-      p.circle(x + l.dx, base - item.h * 0.45 + l.dy, l.r, pal.leafDark);
-      p.circle(x + l.dx - l.r * 0.3, base - item.h * 0.45 + l.dy - l.r * 0.35, l.r * 0.52, pal.leafMid);
-      p.dot(x + l.dx - l.r * 0.45, base - item.h * 0.45 + l.dy - l.r * 0.5, pal.leafLit);
-    }
-    if (item.berry) {
-      for (let i = 0; i < 3; i++) p.px(x + (rand(item.seed, i, 1) - 0.5) * item.w, base - item.h * 0.4 - rand(item.seed, i, 2) * item.h * 0.4, i % 2 ? hex("#c83a44") : hex("#e86a4a"));
-    }
-  } else if (item.type === "fern") {
+  if (item.type === "fern") {
     p.ellipse(x, base, 7, 1.8, pal.ink, 0.3);
     for (let f = 0; f < item.n; f++) {
       const side = f % 2 ? 1 : -1, spread = 0.35 + (f % 3) * 0.22;
@@ -962,8 +891,8 @@ function drawNearItem(p, item, x, pal) {
         py = base - 1 - Math.sin(spread) * len * u;
         p.px(px, py, u > 0.6 ? pal.leafMid : pal.leafDark);
         if (r % 3 === 0 && u < 0.8) {
-          p.px(px - side, py, pal.leafDark);
-          p.px(px + side * 0.2, py - 1, pal.leafMid);
+          p.line(px - side * 2, py + 1, px, py, pal.leafDark);
+          p.line(px, py - 1, px + side * 2, py - 3, pal.moss);
         }
       }
       p.px(px, py, pal.leafLit);
@@ -1026,24 +955,4 @@ function moon(out, cx, cy, r) {
   set(out, cx + 3, cy + 2, hex("#c8c4e0"));
   set(out, cx + 2, cy + 3, hex("#c8c4e0"));
   set(out, cx + 4, cy - 3, hex("#d4d0ea"));
-}
-function farConifer(p, x, base, h, w, c) {
-  p.rect(x - 1, base - 8, 2, 8, c);
-  const tiers = 4;
-  for (let i = 0; i < tiers; i++) {
-    const u = i / tiers, ty = base - 5 - (h - 6) * u;
-    const half = (w * (1 - u) + 2) * 0.5 + 1;
-    const th = (h / tiers) * 1.45;
-    p.tri(x, ty - th, x - half, ty, x + half, ty, c);
-  }
-  p.tri(x, base - h - 2, x - 1, base - h + 4, x + 1, base - h + 4, c);
-}
-function farTree(p, x, base, h, w, c) {
-  // a broad leafy mass that reaches the understory, no lollipop trunk
-  const cy = base - h * 0.34, r = w * 0.55;
-  for (const [dx, dy, rr] of [
-    [0, -r * 0.7, r * 0.85], [-r * 0.95, -r * 0.3, r * 0.68], [r * 0.95, -r * 0.35, r * 0.7],
-    [-r * 0.6, r * 0.35, r * 0.62], [r * 0.65, r * 0.3, r * 0.6], [0, r * 0.1, r * 0.85],
-    [-r * 1.35, r * 0.25, r * 0.44], [r * 1.35, r * 0.2, r * 0.42], [0, r * 0.95, r * 0.6],
-  ]) p.circle(x + dx, cy + dy, rr, c);
 }

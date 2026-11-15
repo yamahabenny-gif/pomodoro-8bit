@@ -108,6 +108,37 @@ describe("forest scene", () => {
     expect(grass).toBeGreaterThan(200);
   });
 
+  it("never paints fight foreground or glow across the character area", () => {
+    const forest = createForest();
+    const marker = 0xffaf37bd;
+    for (const scroll of [0, 120, 2800, 3480, 2600, -9000]) {
+      forest.scroll(scroll);
+      forest.update(1.7);
+      const frame = createFrame(W, H);
+      forest.drawBack(frame);
+      // An opaque actor can occupy any pixel above the two-pixel grass fringe.
+      frame.color.fill(marker, 0, W * (GROUND_Y - 2));
+      const light = frame.light.slice();
+      forest.drawFront(frame);
+      expect(frame.color.subarray(0, W * (GROUND_Y - 2)).every((c) => c === marker)).toBe(true);
+      expect(frame.light).toEqual(light);
+    }
+  });
+
+  it("keeps mist in the lower third and moves it without moving the camera", () => {
+    const forest = createForest();
+    const a = createFrame(W, H), b = createFrame(W, H);
+    forest.drawBack(a);
+    forest.update(4);
+    forest.drawBack(b);
+    expect(a.color.subarray(0, W * 103)).toEqual(b.color.subarray(0, W * 103));
+    let changed = 0;
+    for (let y = 108; y < GROUND_Y; y++) for (let x = 0; x < W; x++) {
+      if (a.color[y * W + x] !== b.color[y * W + x]) changed++;
+    }
+    expect(changed).toBeGreaterThan(200);
+  });
+
   it("puts a lit fire and fireflies at the campfire in camp and night", () => {
     const forest = createForest();
     forest.setMode("night", { instant: true });
