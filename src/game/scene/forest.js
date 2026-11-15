@@ -248,8 +248,7 @@ export function createForest() {
         }
       }
     }
-    // low sun / sunset glow, dithered so it stays in the palette's steps
-    if (m === "fight") glow(out, W / 2, 96, 122, hex("#f2a05a"), 0.14);
+    // The fight sunset is carried by the sky gradient; an extra glow would clip against the floor edge.
     if (m === "camp") {
       glow(out, CAMPFIRE_X + 34, GROUND_Y + 2, 96, hex("#f0a05a"), 0.7);
       disc(out, 276, GROUND_Y - 12, 7, (d) => (d > 0.82 ? hex("#e8a05a") : hex("#ffd894")));
@@ -505,6 +504,23 @@ export function createForest() {
     const warm = hex("#e8a06a");
     for (const [top, drift] of [[66, 18], [254, -14]]) {
       for (let y = 20; y < 112; y++) p.dot(Math.round(top + ((y - 20) / 92) * drift), y, warm, 0.16);
+    }
+  }
+
+  function drawFightFireflies(p, amount) {
+    if (amount <= 0.004) return;
+    p.place(0, 0);
+    const gold = hex("#ffd36f"), amber = hex("#f1a64f");
+    for (let i = 0; i < 6; i++) {
+      const phase = rand(941, i, 1) * TAU;
+      const pulse = Math.max(0, Math.sin(time * 1.15 + phase));
+      if (pulse < 0.16) continue;
+      const x = rand(941, i, 2) * W + Math.sin(time * 0.22 + phase) * 3;
+      const y = 103 + rand(941, i, 3) * 39 + Math.sin(time * 0.42 + phase) * 2;
+      const color = i % 2 ? amber : gold;
+      p.glow(x, y, 5 + pulse * 3, color, 0.32 * pulse * amount);
+      p.dot(x, y, color, pulse * amount);
+      if (pulse > 0.72) p.dot(x + 1, y - 1, gold, (pulse - 0.6) * amount);
     }
   }
 
@@ -767,7 +783,8 @@ export function createForest() {
     drawFront(frame) {
       const p = painterFor(frame);
       p.place(0, 0);
-      drawFxAlpha(frame, flies, "front", clamp(weights.camp * 0.9 + weights.night + weights.fight * 0.34));
+      drawFxAlpha(frame, flies, "front", clamp(weights.camp * 0.9 + weights.night));
+      drawFightFireflies(p, weights.fight);
       drawFireFront(p, clamp(weights.camp + weights.night));
       eachMode((m, fade) => drawGrassLayer(p, m, fade, time));
     },
