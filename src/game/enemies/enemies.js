@@ -192,7 +192,7 @@ export function createEnemy(kind, opts = {}) {
   const spec = stats[kind], sprite = sprites[kind], colors = palettes[kind];
   let x = opts.x ?? 0, y = opts.y ?? 150, hp = spec.hp, state = "approach";
   let clock = 0, attackT = 0, hitFlash = 0, recoil = 0, targetX = x;
-  let queuedHit = null, didHit = false, didBlock = false, blockT = 0, impactFx = null, impactKind = "hit", deathFx = null, slamFx = null;
+  let queuedHit = null, didHit = false, didBlock = false, receivedOrcHits = 0, blockT = 0, impactFx = null, impactKind = "hit", deathFx = null, slamFx = null;
   let rubble = [], deathT = 0;
   const maxHp = hp;
 
@@ -253,11 +253,14 @@ export function createEnemy(kind, opts = {}) {
     },
     hit(dmg = 1) {
       if (state === "dying" || state === "dead" || dmg <= 0) return hp;
-      if (kind === "orc" && !didBlock && state === "fight" && clock % 5 < 0.85) {
-        didBlock = true;
-        blockT = 0.32;
-        startImpact("block");
-        return hp;
+      if (kind === "orc" && state === "fight") {
+        receivedOrcHits++;
+        if (!didBlock && receivedOrcHits === 2) {
+          didBlock = true;
+          blockT = 0.32;
+          startImpact("block");
+          return hp;
+        }
       }
       hp = Math.max(0, hp - dmg);
       hitFlash = 0.12;

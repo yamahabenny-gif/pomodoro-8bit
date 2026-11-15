@@ -67,10 +67,16 @@ describe("forest enemies", () => {
     }
   });
 
-  it("lets the half-orc block once without reducing its health", () => {
-    const enemy = createEnemy("orc", { x: 40, y: 150 });
-    enemy.approach(20);
-    expect(enemy.hit(1)).toBe(3);
+  it("blocks the half-orc's second fight hit after a long approach", () => {
+    const enemy = createEnemy("orc", { x: 270, y: 150 });
+    enemy.approach(122);
+    enemy.update(6);
+    expect(enemy.state).toBe("fight");
+
     expect(enemy.hit(1)).toBe(2);
+    enemy.update(0.7);
+    expect(enemy.hit(1)).toBe(2);
+    enemy.update(0.7);
+    expect(enemy.hit(1)).toBe(1);
   });
 });
