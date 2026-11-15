@@ -25,12 +25,10 @@ export const REST_KINDS = ["storm", "lake"];
 const INK = hex("#17121f");
 const FIRE_X = { storm: 219, lake: 78 };
 const SEAT_X = { storm: 185, lake: 42 };
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
-const bay = (x, y) => BAYER[((y & 3) << 2) | (x & 3)];
 
 const SKY_STOPS = {
-  storm: [[0, "#1c1a33"], [0.34, "#24223f"], [0.72, "#2a2748"], [1, "#302d4c"]],
-  lake: [[0, "#29273e"], [0.4, "#4c4054"], [0.72, "#9a5e58"], [1, "#dc8959"]],
+  storm: [[0, "#11162e"], [0.34, "#282642"], [0.72, "#49405d"], [1, "#716178"]],
+  lake: [[0, "#171a34"], [0.4, "#47304f"], [0.72, "#a36360"], [1, "#ed9b58"]],
 };
 const PAL = {
   storm: {
@@ -42,37 +40,50 @@ const PAL = {
   lake: {
     sky: ["#29273e", "#4c4054", "#9a5e58", "#dc8959"], far: "#322d43", mid: "#272638",
     bark: "#322934", barkLit: "#65443b", rock: "#4c3e3d", rockLit: "#86604a",
-    ground: "#29252b", groundTop: "#696048", water: "#222b3d", waterMid: "#384253", waterLit: "#687080",
+    ground: "#171a29", groundTop: "#3e4b49", water: "#222b3d", waterMid: "#384253", waterLit: "#687080",
     reed: "#596043", wood: "#76523a", ember: "#ffd064", glow: "#ff9b3e",
   },
 };
 const colorPal = Object.fromEntries(Object.entries(PAL).map(([kind, values]) => [kind,
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Array.isArray(v) ? v.map(hex) : hex(v)])),
 ]));
-const STORM_CACHE = Object.create(null);
+const SCENE_CACHE = Object.create(null);
+const MIST = makeMist();
+
+function makeMist() {
+  const pixels = [];
+  for (let y = -4; y <= 4; y++) for (let x = -58; x <= 58; x++) {
+    const d = (x / 58) ** 2 + (y / 4) ** 2;
+    if (d < 1) pixels.push([x, y, (1 - d) ** 2 * 0.22]);
+  }
+  return pixels;
+}
 
 function makeBackground(kind, night) {
   const pal = colorPal[kind], stops = SKY_STOPS[kind].map(([t, c]) => [t, hex(c)]);
   const bg = new Uint32Array(W * H);
   for (let y = 0; y < H; y++) {
-    const t = y / (GROUND_Y - 1);
+    const t = y / (kind === "lake" ? 108 : 149);
     let i = 0;
     while (i < stops.length - 2 && t > stops[i + 1][0]) i++;
     const [t0, c0] = stops[i], [t1, c1] = stops[i + 1];
     const f = clamp((t - t0) / Math.max(1e-5, t1 - t0));
     const row = y * W;
     for (let x = 0; x < W; x++) {
-      const step = Math.floor(f * 5), frac = f * 5 - step;
-      let c = mix(c0, c1, clamp((step + (frac > bay(x, y) ? 1 : 0)) / 5));
+      let c = mix(c0, c1, Math.floor(f * 12) / 12);
       if (night) c = mix(c, hex("#111525"), 0.42);
       bg[row + x] = c;
     }
   }
   if (kind === "storm") drawStormClouds(bg, pal);
+  if (kind === "lake" && night) {
+    discInto(bg, 218, 30, 7, hex("#f5d79c"));
+    for (let i = 0; i < 28; i++) putBuffer(bg, Math.floor(rand(90, i, 1) * W), 5 + Math.floor(rand(90, i, 2) * 65), hex("#b9b6c9"));
+  }
   drawTreeLayers(bg, kind);
   if (kind === "storm") {
     // Wet forest floor with long puddles holding a blue-violet reflection.
-    const puddles = [[16, 161, 18, 7], [278, 159, 26, 8], [307, 166, 16, 7]];
+    const puddles = [[16, 161, 18, 7], [219, 164, 15, 6], [278, 159, 26, 8], [307, 166, 16, 7]];
     for (let y = 130; y < H; y++) for (let x = 0; x < W; x++) {
       const edge = y === 130 || y === 131;
       const dry = x >= 43 && x <= 255 && y >= 138;
@@ -87,6 +98,10 @@ function makeBackground(kind, night) {
         }
       }
     }
+    for (let x = 0; x < W; x++) {
+      const edge = 132 + Math.round(Math.sin(x * 0.08) * 2 + Math.sin(x * 0.21));
+      for (let y = 130; y < edge; y++) bg[y * W + x] = mix(pal.ground, pal.groundTop, 0.6);
+    }
     drawStormGround(bg, pal);
   } else {
     // Lake occupies the middle distance; the foreground shore remains a clear place for the heroine and fire.
@@ -96,19 +111,14 @@ function makeBackground(kind, night) {
     }
     drawLakeReflectionTrees(bg, pal);
     for (let y = 143; y < H; y++) for (let x = 0; x < W; x++) bg[y * W + x] = y < 151 ? pal.groundTop : pal.ground;
-    const moonX = night ? 254 : 255, moonY = 26;
-    discInto(bg, moonX, moonY, night ? 7 : 0, hex("#f5d79c"));
-    if (night) for (let i = 0; i < 28; i++) {
-      const x = Math.floor(rand(90, i, 1) * W), y = 5 + Math.floor(rand(90, i, 2) * 71);
-      bg[y * W + x] = rand(90, i, 3) > 0.4 ? hex("#d3c5bd") : hex("#8e9db0");
-    } else for (const [x, y] of [[31, 25], [119, 39], [208, 19], [288, 57]]) bg[y * W + x] = hex("#edd3a4");
-    // Fire, moon and firefly reflection bands ripple on the surface.
-    for (let y = 108; y < 145; y += 4) {
-      const center = 78 + Math.round(Math.sin(y * 0.41) * 3), half = Math.max(1, Math.floor((y - 105) * 0.16));
-      for (let x = center - half; x <= center + half; x++) if (x >= 0 && x < W) bg[y * W + x] = y % 8 ? pal.waterMid : pal.ember;
-      if (night && y % 8 === 0) for (let x = 248 - half; x <= 248 + half; x++) if (x >= 0 && x < W) bg[y * W + x] = pal.waterLit;
-    }
+
   }
+  if (kind === "storm") for (let y = 113; y < 131; y++) for (let x = 0; x < W; x++) {
+    const center = 122 + Math.sin(x * 0.024) * 3;
+    const strength = Math.max(0, 1 - Math.abs(y - center) / 8) * 0.22;
+    bg[y * W + x] = mix(bg[y * W + x], hex("#8294a6"), strength);
+  }
+  drawWoodlandFloor(bg, kind);
   return bg;
 }
 
@@ -156,17 +166,12 @@ function cloudMass(buf, cx, cy, rx, ry, color, seed) {
 }
 
 function drawStormClouds(buf) {
-  const cloudLow = hex("#24223f"), cloudMid = hex("#2b294b"), cloudRim = hex("#3b3866");
-  // Broad scalloped cloud bands leave a ragged opening toward the horizon for the lightning to silhouette.
-  for (let x = -20; x < W + 30; x += 1) {
-    const wave = Math.sin(x * 0.028) * 5 + Math.sin(x * 0.071 + 1.2) * 3;
-    const underside = 29 + wave + Math.sin(x * 0.13) * 2;
-    for (let y = 0; y < underside; y++) putBuffer(buf, x, y, y < 10 + wave * 0.18 ? cloudLow : cloudMid);
-    if (Math.sin(x * 0.09 + 0.6) > 0.58) for (let y = Math.floor(underside - 3); y < underside; y++) putBuffer(buf, x, y, cloudRim);
+  // Overlapping bellies carry three quiet values; lightning later lights their interior.
+  for (const [x, y, rx, ry, seed] of [[40, 14, 64, 25, 21], [133, 8, 70, 26, 22], [221, 17, 57, 23, 23], [301, 8, 63, 27, 24]]) {
+    cloudMass(buf, x, y + 10, rx, ry, hex("#4d4662"), seed);
+    cloudMass(buf, x - 8, y + 3, rx, ry, hex("#35334e"), seed);
+    cloudMass(buf, x - 16, y - 8, rx, ry, hex("#23273f"), seed);
   }
-  for (const [x, y, rx, ry, c, s] of [
-    [43, 30, 31, 12, cloudMid, 21], [111, 35, 42, 15, cloudLow, 22], [187, 28, 38, 13, cloudMid, 23], [274, 34, 51, 17, cloudLow, 24],
-  ]) cloudMass(buf, x, y, rx, ry, c, s);
 }
 
 function drawStormGround(buf, pal) {
@@ -198,59 +203,109 @@ function drawStormGround(buf, pal) {
   }
 }
 
-function drawTreeLayers(buf, kind) {
-  const farTrunk = kind === "storm" ? hex("#29243c") : hex("#322d43");
-  const farCanopy = kind === "storm" ? hex("#24223d") : hex("#2b293f");
-  const near = kind === "storm" ? hex("#171523") : hex("#222031");
-  // Distant slender trunks and ragged crowns create a separate silhouette band.
-  for (let i = 0; i < 9; i++) {
-    const x = 14 + i * 38 + Math.round((rand(311, i, 1) - 0.5) * 18);
-    const tip = 43 + Math.round(rand(311, i, 2) * 34), base = 138, lean = (rand(311, i, 3) - 0.5) * 13;
-    for (let lobe = 0; lobe < 5; lobe++) {
-      const lx = x + (lobe - 2) * (7 + Math.round(rand(312, i, lobe) * 3));
-      const ly = tip + Math.abs(lobe - 2) * 3;
-      fillPolyBuffer(buf, [[lx - 9, ly + 6], [lx - 6, ly - 1], [lx - 2, ly - 5], [lx + 3, ly - 3], [lx + 9, ly + 5], [lx + 6, ly + 10]], farCanopy);
+// Rounded leaf clusters join into a crown; a few notches keep the pixel edge organic.
+function leafMass(buf, cx, cy, rx, ry, color, seed) {
+  for (let i = 0; i < 11; i++) {
+    const x = cx + (rand(seed, i, 1) - 0.5) * rx * 1.6;
+    const y = cy + (rand(seed, i, 2) - 0.5) * ry;
+    const r = rx * (0.25 + rand(seed, i, 3) * 0.24);
+    ellipseBuffer(buf, x, y, r, ry * (0.48 + rand(seed, i, 4) * 0.3), color);
+    for (let j = 0; j < 8; j++) {
+      const angle = rand(seed + i, j, 8) * Math.PI * 2;
+      const lx = x + Math.cos(angle) * r, ly = y + Math.sin(angle) * ry * 0.65;
+      ellipseBuffer(buf, lx, ly, 2 + j % 3, 1 + j % 2, color);
     }
-    lineBuffer(buf, x + lean, tip + 3, x, base, farTrunk, 2);
-    lineBuffer(buf, x + lean, tip + 21, x - 13, tip + 6, farTrunk, 2);
-    lineBuffer(buf, x + lean, tip + 15, x + 14, tip + 2, farTrunk, 2);
-    lineBuffer(buf, x, base - 3, x - 10, base + 5, farTrunk, 2);
-    lineBuffer(buf, x, base - 3, x + 11, base + 5, farTrunk, 2);
-  }
-  // Near trees are thicker and gnarled; trunks fork into asymmetric limbs and roots.
-  const nearTrees = kind === "storm" ? [[-8, 4, 12, 165], [75, 8, 8, 151], [257, 12, 10, 158], [322, 3, -9, 165]] : [[-7, 10, 10, 98], [67, 23, 6, 101], [155, 18, -7, 99], [249, 13, 8, 101], [326, 5, -8, 99]];
-  for (let i = 0; i < nearTrees.length; i++) {
-    const [x, top, lean, base] = nearTrees[i], dx = lean < 0 ? -1 : 1, col = i % 2 ? near : mix(near, farTrunk, 0.16);
-    lineBuffer(buf, x + lean, top, x, base, col, kind === "storm" ? (i % 2 ? 7 : 5) : 4);
-    lineBuffer(buf, x + lean * 0.72, top + 28, x + dx * 34, top + 5, col, 4);
-    lineBuffer(buf, x + lean * 0.72, top + 28, x + dx * 15, top + 19, col, 4);
-    lineBuffer(buf, x + dx * 15, top + 19, x + dx * 34, top + 5, col, 3);
-    lineBuffer(buf, x + lean * 0.5, top + 45, x - dx * 30, top + 26, col, 3);
-    lineBuffer(buf, x + dx * 15, top + 17, x + dx * 23, top + 3, col, 2);
-    lineBuffer(buf, x, base - 3, x - 17, base + 8, col, 3);
-    lineBuffer(buf, x, base - 3, x + 18, base + 8, col, 3);
-    for (let lobe = 0; lobe < 6; lobe++) {
-      const bx = x + (lobe - 2.5) * 9 + Math.sin(i + lobe) * 4, by = top + 4 + (lobe % 2) * 5;
-      fillPolyBuffer(buf, [[bx - 11, by + 7], [bx - 8, by], [bx - 3, by - 5], [bx + 4, by - 2], [bx + 11, by + 6], [bx + 6, by + 10]], col);
-    }
-    if (kind === "storm" && i % 2 === 0) lineBuffer(buf, x + dx * 3, base - 18, x + dx * 7, base - 51, mix(col, hex("#45435f"), 0.5), 1);
   }
 }
 
-function drawLakeReflectionTrees(buf, pal) {
-  const reflect = hex("#3a4258");
-  // Broken, inverted tree silhouettes taper into the water and leave room for moving glints.
-  for (let i = 0; i < 8; i++) {
-    const x = 13 + i * 42 + Math.round((rand(319, i, 1) - 0.5) * 18), tip = 102 + Math.round(rand(319, i, 2) * 6), end = 135;
-    for (let y = tip; y < end; y += 2) {
-      const depth = y - tip, width = Math.min(12, 2 + Math.floor(depth * 0.34));
-      const center = x + Math.round(Math.sin(depth * 0.2 + i) * 2);
-      for (let dx = -width; dx <= width; dx++) {
-        const segment = Math.floor((dx + width) / 4);
-        if (rand(320, i, Math.floor(y / 2), segment) > 0.24)
-          putBuffer(buf, center + dx, y, depth % 6 === 0 ? pal.waterMid : reflect);
+function ellipseBuffer(buf, cx, cy, rx, ry, color) {
+  for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(H - 1, cy + ry); y++) {
+    const width = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
+    for (let x = Math.max(0, Math.ceil(cx - width)); x <= Math.min(W - 1, cx + width); x++) buf[y * W + x] = color;
+  }
+}
+
+function drawTreeLayers(buf, kind) {
+  const lake = kind === "lake", base = lake ? 101 : 139;
+  // Three continuous masses separate the warm horizon from the cool foreground.
+  for (let layer = 0; layer < 3; layer++) {
+    const col = hex((lake ? ["#69506b", "#413451", "#20243e"] : ["#49415b", "#302e48", "#1c2037"])[layer]);
+    for (let i = 0; i < 10; i++) {
+      const x = i * 37 - 7 + (rand(311, i, layer) - 0.5) * 22;
+      const opening = Math.sin(Math.max(0, Math.min(1, x / W)) * Math.PI);
+      const top = (lake ? 31 + opening * 42 : 37) + layer * 7 + rand(314, i, layer) * 16;
+      const bend = (rand(316, i, layer) - 0.5) * 15;
+      fillPolyBuffer(buf, [[x - 5, base], [x - 2, base - 19], [x + bend - 3, top], [x + bend + 2, top], [x + 3, base - 22], [x + 9, base]], col);
+      lineBuffer(buf, x, top + 27, x - 14, top + 9, col, 2);
+      lineBuffer(buf, x + 1, top + 22, x + 15, top + 4, col, 2);
+      leafMass(buf, x + bend, top, 22, 12, col, 320 + i + layer * 13);
+      leafMass(buf, x + 14, base - 2, 24, 7, col, 450 + i + layer * 13);
+    }
+  }
+  // Canopy at the frame edge leaves a generous opening over the lake and shelter.
+  for (const [x, y, rx, ry, seed] of [[4, 7, 65, 30, 601], [59, -7, 49, 26, 602], [295, 2, 57, 33, 603], [253, -13, 43, 24, 604]]) {
+    leafMass(buf, x, y, rx, ry, hex("#11162c"), seed);
+  }
+}
+
+function drawLakeReflectionTrees(buf) {
+  // Mirror the actual distant bank, compressing and breaking it into water ripples.
+  const bank = buf.slice();
+  for (let y = 102; y < 141; y++) {
+    const sy = 100 - Math.floor((y - 102) * 1.4);
+    const drift = Math.round(Math.sin(y * 1.7) * 2);
+    for (let x = 0; x < W; x++) {
+      const sx = Math.max(0, Math.min(W - 1, x + drift));
+      const source = bank[sy * W + sx];
+      buf[y * W + x] = mix(source, hex("#25324a"), y % 4 === 0 ? 0.75 : 0.48);
+    }
+  }
+}
+
+function fern(buf, x, y, size, color) {
+  for (const dir of [-1, 1]) {
+    for (let i = 1; i <= size; i++) {
+      const xx = x + i * dir, yy = y - i + i * i / (size * 2.5);
+      lineBuffer(buf, xx, yy, xx + dir * 2, yy - Math.min(4, size - i + 1), color);
+      if (i % 2) lineBuffer(buf, xx, yy, xx + dir * 3, yy + 1, color);
+    }
+  }
+  lineBuffer(buf, x, y, x, y - size, color);
+}
+
+function drawWoodlandFloor(buf, kind) {
+  const lake = kind === "lake", moss = hex("#46594d"), mossLit = hex("#75805c"), soil = hex("#292536");
+  // Low moss cushions and leaf litter leave feet and fire unobscured.
+  for (let i = 0; i < 210; i++) {
+    const x = rand(410, i, 1) * W, y = 149 + rand(410, i, 2) * 31;
+    if (!lake && x > 112 && x < 239 && y < 158) continue;
+    const edge = y < 154 + Math.sin(x * 0.09) * 3;
+    ellipseBuffer(buf, x, y, 1 + rand(411, i, 1) * 3, 1, edge ? (i % 4 ? moss : mossLit) : soil);
+  }
+  for (const [x, y, size] of [[10, 164, 13], [113, 160, 9], [288, 157, 11], [307, 172, 12], [144, 176, 8]]) {
+    fern(buf, x, y, size, INK);
+    fern(buf, x - 1, y - 1, size - 1, moss);
+  }
+  // Framing trunks have tapering elbows and roots, never a vertical cut through the actor plane.
+  for (const side of [0, 1]) {
+    const xx = (x) => side ? W - x : x;
+    const poly = (points, c) => fillPolyBuffer(buf, points.map(([x, y]) => [xx(x), y]), c);
+    poly([[-8, 0], [9, 0], [6, 30], [15, 58], [10, 92], [9, 129], [17, 151], [38, 167], [19, 162], [6, 153], [-4, 174]], INK);
+    poly([[0, 0], [5, 0], [2, 33], [10, 59], [5, 95], [4, 130], [11, 151], [24, 160], [14, 156], [0, 139]], hex("#37303e"));
+    poly([[3, 38], [21, 29], [34, 12], [26, 31], [8, 48]], INK);
+    poly([[7, 80], [24, 65], [31, 43], [29, 65], [17, 79], [8, 88]], INK);
+    lineBuffer(buf, xx(2), 103, xx(1), 134, hex("#66514b"));
+    lineBuffer(buf, xx(8), 148, xx(31), 163, hex("#66514b"));
+    leafMass(buf, xx(26), 20, 26, 14, hex("#11162c"), 701 + side);
+    leafMass(buf, xx(30), 47, 19, 10, hex("#141d32"), 704 + side);
+    for (let i = 0; i < 40; i++) {
+      const x = 13 + rand(608, i, side) * 34, y = 41 + rand(609, i, side) * 15;
+      const at = Math.round(y) * W + Math.round(xx(x));
+      if (buf[at] === hex("#141d32")) {
+        lineBuffer(buf, xx(x), y, xx(x + 2), y - 1, i % 5 ? hex("#27364a") : hex("#61524f"));
       }
     }
+    fern(buf, xx(21), 154, 8, moss);
   }
 }
 
@@ -265,23 +320,27 @@ export function createRest(kind, { night = false } = {}) {
   let time = 0, ignition = -Infinity, lit = false;
   let nextFlash = (night ? 8 : 6) + rand(251, kind === "storm" ? 1 : 2, night ? 1 : 0) * (night ? 7 : 9);
   let flash = 0;
-  const cacheKey = night ? "night" : "day";
-  const cachedStorm = kind === "storm" ? STORM_CACHE[cacheKey] : null;
-  const bgBase = cachedStorm?.bgBase ?? makeBackground(kind, night);
-  const bgFlash = cachedStorm?.bgFlash ?? new Uint32Array(W * H);
-  if (kind === "storm" && !cachedStorm) {
+  const cacheKey = `${kind}-${night ? "night" : "day"}`;
+  const cachedScene = SCENE_CACHE[cacheKey];
+  const bgBase = cachedScene?.bgBase ?? makeBackground(kind, night);
+  const bgFlash = cachedScene?.bgFlash ?? (kind === "storm" ? new Uint32Array(W * H) : null);
+  if (kind === "storm" && !cachedScene) {
     const flashTone = hex("#7473a4");
-    for (let i = 0; i < bgBase.length; i++) bgFlash[i] = mix(bgBase[i], flashTone, 0.38);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const interior = Math.exp(-(((x - 174) / 115) ** 2 + ((y - 24) / 35) ** 2));
+      const strength = y < 130 ? 0.08 + interior * 0.6 : 0.035;
+      bgFlash[y * W + x] = mix(bgBase[y * W + x], flashTone, strength);
+    }
   }
-  const stormStatic = cachedStorm?.stormStatic ?? (kind === "storm" ? createFrame(W, H) : null);
-  if (stormStatic && !cachedStorm) {
-    const staticPainter = painterFor(stormStatic);
+  const staticFrame = cachedScene?.staticFrame ?? createFrame(W, H);
+  if (staticFrame && !cachedScene) {
+    const staticPainter = painterFor(staticFrame);
     staticPainter.place(0, 0);
-    drawShelter(staticPainter);
-    STORM_CACHE[cacheKey] = { bgBase, bgFlash, stormStatic };
+    if (kind === "storm") drawShelter(staticPainter); else drawLakeBank(staticPainter);
+    SCENE_CACHE[cacheKey] = { bgBase, bgFlash, staticFrame };
   }
-  const rainBack = kind === "storm" ? makeRainDrops(40, 701, 25, 4) : [];
-  const rainFront = kind === "storm" ? makeRainDrops(24, 802, 31, 6) : [];
+  const rainBack = kind === "storm" ? makeRainDrops(40, 701, 25) : [];
+  const rainFront = kind === "storm" ? makeRainDrops(24, 802, 31) : [];
   const fire = createFx(campfire, { x: fireX, y: GROUND_Y, height: kind === "storm" ? 13 : 17, seed: kind === "storm" ? 35 : 72, light: 0.72 });
 
   function background() {
@@ -315,11 +374,38 @@ export function createRest(kind, { night = false } = {}) {
     p.poly([[222, 72], [235, 75], [244, 80], [239, 82], [229, 78]], pal.moss);
     for (const [x, y, h] of [[59, 74, 5], [69, 67, 4], [108, 53, 4], [118, 52, 6], [169, 63, 5], [233, 76, 5]])
       p.line(x, y, x + ((x % 3) - 1), y - h, pal.moss);
-    // Water runs off the broken rock lip in narrow drops.
-    for (const [x, len] of [[118, 7], [145, 10], [174, 6], [196, 9], [226, 6], [245, 8]]) {
-      const edgeY = 88 + Math.round((x - 118) * 0.11);
-      p.dot(x, edgeY, pal.rainNear, 0.75);
-      for (let y = edgeY + 2; y < edgeY + len; y++) if ((y + x) % 3 !== 0) p.dot(x, y, pal.rain, 0.58);
+    // Long strata break into short offsets, following the weight of the rock.
+    for (const [x, y, length] of [[62, 92, 18], [48, 115, 19], [70, 73, 19], [101, 61, 31], [143, 65, 28], [187, 76, 27], [216, 84, 26]]) {
+      p.polyline([[x, y + 5], [x + 5, y], [x + length - 8, y + 2], [x + length, y + 1]], pal.rockMid);
+      p.line(x + 7, y + 1, x + length - 8, y + 3, pal.rockLit);
+    }
+    for (let i = 0; i < 60; i++) {
+      const x = 70 + rand(408, i, 1) * 174;
+      const y = 51 + (x - 108) * 0.18 + rand(408, i, 2) * 6;
+      p.ellipse(x, Math.max(54, y), 2 + i % 4, 1 + i % 2, i % 3 ? pal.moss : hex("#62715b"));
+    }
+    p.poly([[115, 103], [124, 97], [149, 99], [145, 103], [126, 103], [118, 114], [116, 133]], hex("#302c42"));
+    p.poly([[116, 134], [134, 137], [151, 134], [167, 138], [194, 136], [232, 140], [116, 141]], hex("#342e3e"));
+    p.polyline([[47, 128], [61, 119], [69, 109], [76, 104]], pal.rockMid);
+    p.polyline([[53, 130], [66, 122], [76, 106], [82, 101]], pal.rockMid);
+    for (let i = 0; i < 150; i++) {
+      const x = 43 + Math.floor(rand(513, i, 1) * 212), y = 54 + Math.floor(rand(513, i, 2) * 83);
+      const color = p.frame.color[y * W + x];
+      if (color !== pal.rock && color !== pal.rockMid && color !== pal.rockLit) continue;
+      const tone = color === pal.rockLit ? pal.rockMid : pal.rock;
+      p.line(x, y, x + 2 + i % 4, y + (i % 2), tone);
+    }
+    p.polyline([[53, 131], [60, 141], [78, 147], [96, 148]], INK);
+    p.polyline([[55, 133], [63, 140], [79, 145], [94, 146]], pal.moss);
+    for (const [x, y, h] of [[65, 70, 7], [110, 53, 6], [169, 62, 5], [235, 77, 6]]) fern(p.frame.color, x, y, h, pal.moss);
+  }
+
+  function drawDrips(p) {
+    for (const [x, edgeY] of [[119, 89], [146, 87], [175, 92], [245, 101]]) {
+      const age = (time * 0.7 + x * 0.21) % 1;
+      const y = edgeY + age * age * (145 - edgeY);
+      p.blend(x, y, pal.rainNear, 0.55);
+      p.blend(x, y + 1, pal.rainNear, 0.35);
     }
   }
 
@@ -342,6 +428,21 @@ export function createRest(kind, { night = false } = {}) {
       p.ellipse(x, y, rx, ry, INK); p.ellipse(x, y - 1, rx - 1, ry - 1, pal.rock);
       p.px(x - 1, y - 1, pal.rockLit);
     }
+    // An old landing meets the water at the quiet right-hand bank.
+    p.poly([[229, 136], [271, 136], [285, 148], [228, 148]], INK);
+    for (let i = 0; i < 7; i++) {
+      const x = 231 + i * 7;
+      p.poly([[x, 137], [x + 5, 137], [x + 8, 145], [x + 1, 145]], pal.wood);
+      p.line(x + 1, 137, x + 5, 137, pal.rockLit);
+      p.line(x + 3, 141, x + 5, 144, pal.barkLit);
+    }
+    p.line(231, 135, 231, 151, INK); p.line(278, 139, 278, 154, INK);
+    p.line(232, 135, 232, 150, pal.barkLit); p.line(279, 139, 279, 153, pal.barkLit);
+    for (let i = 0; i < 120; i++) {
+      const x = rand(503, i, 1) * W, y = 143 + rand(503, i, 2) * 6;
+      if (x > 226 && x < 286) continue;
+      p.ellipse(x, y, 1 + i % 3, 1, i % 4 ? hex("#435a50") : hex("#78805d"));
+    }
     for (const [x, h] of [[29, 8], [58, 7], [139, 9], [183, 6], [235, 8], [281, 7]]) {
       p.line(x, 145, x - 2, 145 - h, pal.reed);
       p.line(x + 2, 146, x + 4, 145 - h * 0.8, pal.reed);
@@ -350,16 +451,23 @@ export function createRest(kind, { night = false } = {}) {
   }
 
   function drawLakeMist(p) {
-    for (let band = 0; band < 4; band++) {
-      const y = 101 + band * 6 + Math.sin(time * 0.35 + band) * 1.5;
-      const drift = (time * (3 + band) + band * 37) % 390 - 35;
-      for (let segment = 0; segment < 3; segment++) {
-        const x = (drift + segment * 137) % 350 - 15, length = 34 + ((segment * 19 + band * 13) % 37);
-        for (let dx = 0; dx < length; dx += 2) {
-          const alpha = 0.2 + 0.06 * Math.sin(dx * 0.19 + band);
-          p.blend(x + dx, y + Math.sin(dx * 0.13 + band) * 1.2, hex("#a4a6b4"), alpha);
-        }
-      }
+    for (let band = 0; band < 3; band++) {
+      const cx = ((time * (1.5 + band) + band * 113) % 460) - 70;
+      const cy = 106 + band * 9 + Math.sin(time * 0.3 + band) * 2;
+      for (const [x, y, alpha] of MIST) p.blend(cx + x, cy + y, hex("#9aabc0"), alpha);
+    }
+  }
+
+  function drawReflections(p) {
+    if (night) for (let row = 0; row < 13; row++) {
+      const y = 104 + row * 3, center = 218 + Math.sin(time * 1.3 + row * 1.9) * (1 + row * 0.14);
+      const half = 1 + row * 0.48;
+      for (let x = -half; x <= half; x++) p.blend(center + x, y, hex("#e6c99c"), (row % 3 === 0 ? 0.53 : 0.27) * (1 - Math.abs(x) / (half + 2)));
+    }
+    if (lit) for (let row = 0; row < 9; row++) {
+      const y = 116 + row * 3, center = fireX + Math.sin(time * 2 + row * 2.1) * 2;
+      const half = 1 + row * 0.55;
+      for (let x = -half; x <= half; x++) p.blend(center + x, y, pal.ember, 0.2 + (row % 3) * 0.12);
     }
   }
 
@@ -369,7 +477,7 @@ export function createRest(kind, { night = false } = {}) {
     p.line(x - 10, GROUND_Y - 1, x + 8, GROUND_Y - 5, pal.wood);
     p.line(x - 8, GROUND_Y - 4, x + 10, GROUND_Y, pal.wood);
     p.line(x - 8, GROUND_Y - 2, x + 7, GROUND_Y - 5, pal.barkLit);
-    if (ignition > 0 && ignition < 1.5) {
+    if (ignition > -Infinity && time - ignition < 1.5) {
       const age = time - ignition, q = clamp(age / 1.5);
       // Sparks first, then a small smoke curl, then the first tongues of flame.
       if (age < 0.38) for (let i = 0; i < 7; i++) {
@@ -400,7 +508,7 @@ export function createRest(kind, { night = false } = {}) {
       const phase = (time * drop.speed + drop.offset) % 180;
       const x = (drop.x - Math.floor(phase * 0.22) + W) % W;
       const y = phase - 16;
-      if (x >= 108 && x <= 245 && y >= 82 && y < 141) continue;
+      if (x >= 108 && x <= 245 && y >= 82 && y <= 152) continue;
       if (front && y < 126) continue;
       if (!front && y > 136) continue;
       const c = front ? pal.rainNear : pal.rain;
@@ -409,11 +517,12 @@ export function createRest(kind, { night = false } = {}) {
     // Small crowns in the puddle bands suggest drops hitting the wet ground.
     if (front) for (let i = 0; i < 5; i++) {
       const x = (i * 73 + Math.floor(time * 17) % W) % W, y = 158 + (i % 2) * 5;
+      if (x > 108 && x < 245 && y < 160) continue;
       p.line(x - 2, y, x, y - 1, pal.rainNear, 0.6); p.line(x, y - 1, x + 2, y, pal.rainNear, 0.6);
     }
   }
 
-  function makeRainDrops(count, seed, speed, offset) {
+  function makeRainDrops(count, seed, speed) {
     return Array.from({ length: count }, (_, i) => ({
       x: Math.floor(rand(seed, i, 2) * W),
       offset: rand(seed, i, 1) * 180,
@@ -431,9 +540,10 @@ export function createRest(kind, { night = false } = {}) {
       p.glow(x, y, 7, hex("#a6c94a"), pulse * 0.42);
       p.dot(x, y, pulse > 0.72 ? hex("#f0e883") : hex("#badb59"), pulse);
       if (pulse > 0.72) p.dot(x + 1, y, hex("#f4eeb0"), pulse * 0.75);
-      if (y < 137) {
-        const ry = 104 + (y - 82) * 0.43, rx = x + Math.sin(time * 0.8 + i) * 2;
-        p.dot(rx, ry, pal.waterLit, pulse * 0.45);
+      if (y < 108) {
+        const ry = Math.min(138, 102 + (102 - y) * 0.7 + 12), rx = x + Math.sin(time * 0.8 + i) * 2;
+        p.blend(rx, ry, hex("#b9cf74"), pulse * 0.45);
+        p.blend(rx + 1, ry, pal.waterLit, pulse * 0.2);
       }
     }
   }
@@ -445,8 +555,10 @@ export function createRest(kind, { night = false } = {}) {
       p.line(x + 5, y + 2, x + width - 8, y + 2, pal.puddle, 0.55);
     }
     // Amber streaks mirror the campfire in the nearest pools.
-    p.line(274, 159, 290, 159, pal.ember, 0.8);
-    p.line(278, 162, 287, 162, pal.glow, 0.52);
+    if (lit) for (let row = 0; row < 5; row++) {
+      const y = 159 + row * 2, x = fireX + Math.sin(time * 2.3 + row) * 2;
+      for (let dx = -7 + row; dx <= 7 - row; dx++) p.blend(x + dx, y, row % 2 ? pal.glow : pal.ember, 0.32);
+    }
     for (let i = 0; i < 6; i++) {
       const x = (i * 59 + Math.floor(time * 19)) % W, y = 155 + (i % 3) * 7;
       const pulse = 0.45 + 0.4 * Math.sin(time * 4 + i);
@@ -492,15 +604,18 @@ export function createRest(kind, { night = false } = {}) {
     drawBack(frame) {
       const p = painterFor(frame); p.place(0, 0);
       if (kind === "storm") {
-        frame.color.set(stormStatic.color);
+        frame.color.set(staticFrame.color);
         drawLightning(p);
+        drawDrips(p);
         if (lit) drawShelterLight(p);
         drawRain(p, false);
       } else {
-        drawLakeBank(p);
+        frame.color.set(staticFrame.color);
+        drawReflections(p);
         if (lit) p.glow(fireX, GROUND_Y - 11, 59, pal.glow, 0.15);
-        drawLakeFlies(p, false);
         drawLakeMist(p);
+        drawLakeFlies(p, false);
+        drawLakeFlies(p, true);
       }
       drawLogs(p);
       if (lit) fire.draw(frame, "back");
@@ -511,19 +626,13 @@ export function createRest(kind, { night = false } = {}) {
         drawStormPuddles(p);
         drawRain(p, true);
       }
-      else {
-        // A few broken ripples and firefly lights hang over the lake's mirrored band.
-        for (let i = 0; i < 10; i++) {
-          const x = (i * 37 + Math.floor(time * 3) % 37) % W, y = 112 + (i % 6) * 5;
-          p.line(x, y, x + 3 + (i % 4), y, i % 3 ? pal.waterLit : pal.ember, 0.38);
-        }
-        drawLakeFlies(p, true);
-      }
       if (lit) fire.draw(frame, "front");
     },
   };
 }
 
-// Bake both storm variants while the scene module loads, before a rest phase enters the animation loop.
+// Bake all static variants before a rest phase enters the animation loop.
 createRest("storm");
 createRest("storm", { night: true });
+createRest("lake");
+createRest("lake", { night: true });
