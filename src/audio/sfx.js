@@ -3,15 +3,16 @@
 // createSfx() returns:
 //   unlock()                     call on the first user gesture (browsers block audio before)
 //   play(name)                   "swing" | "hit" | "enemyDie" | "hurt" | "phaseFocus" | "phaseBreak" | "click"
-//                                WAVE 4 (issue "Sound 2"): + "levelUp" | "thunder" | "ignite" | "block" | "rockHit";
-//                                ambience("rain") and ambience("lake") (soft water, crickets)
+//                                WAVE 4 (issue "Sound 2"): + "levelUp" | "thunder" | "ignite" | "block" | "rockHit"
 //   setMuted(bool), muted
-//   ambience(mode)               "forest" | "fire" | null: soft looping noise beds, optional
+//   ambience(mode)               "forest" | "fire" | "rain" | "lake" | null: soft looping beds, optional.
+//                                "rain" is rain on leaves with a drip crackle; "lake" is lapping water and crickets.
 // notify(title, body)            Notification API when the tab is hidden; asks permission once, from a click
 //
 // Additions, backwards compatible: createSfx({ storage, createContext }) injects a fake for tests; the instance
-// also carries notify() and requestPermission(); requestPermission() is exported; renderSound(name) renders the
-// same recipe offline (waveform art in docs/img/issue-7) and SOUNDS is the data both paths share.
+// also carries notify() and requestPermission(); requestPermission() is exported; renderSound(name) and
+// renderAmbience(mode, seconds) render the same recipes offline (waveform art in docs/img/issue-7 and -29);
+// SOUNDS and AMBIENCES are the data both paths share.
 
 const STORAGE_KEY = "pomodoro8bit.muted";
 /** Quiet on purpose: peak of a busy sound sits around -18 dBFS. */
@@ -96,10 +97,114 @@ export const SOUNDS = {
     ],
     2,
   ),
+
+  // ---- WAVE 4 -------------------------------------------------------------------------------------
+  // Level up: C major run up (C5 E5 G5 C6) into a held chord with a triangle octave on top. One second and
+  // the loudest sound in the set: a level is worth hearing.
+  levelUp: recipe(
+    [
+      { type: "tone", wave: "square", t: 0, dur: 0.08, gain: 0.24, from: 523 },
+      { type: "tone", wave: "square", t: 0.07, dur: 0.08, gain: 0.24, from: 659 },
+      { type: "tone", wave: "square", t: 0.14, dur: 0.08, gain: 0.25, from: 784 },
+      { type: "tone", wave: "square", t: 0.21, dur: 0.1, gain: 0.26, from: 1046 },
+      // closing chord: C major with a triangle bass and a shimmering third octave
+      { type: "tone", wave: "square", t: 0.36, dur: 0.6, gain: 0.2, from: 523 },
+      { type: "tone", wave: "square", t: 0.36, dur: 0.6, gain: 0.18, from: 659 },
+      { type: "tone", wave: "square", t: 0.36, dur: 0.56, gain: 0.18, from: 784 },
+      { type: "tone", wave: "square", t: 0.36, dur: 0.52, gain: 0.15, from: 1046 },
+      { type: "tone", wave: "triangle", t: 0.36, dur: 0.58, gain: 0.13, from: 262 },
+      { type: "tone", wave: "triangle", t: 0.34, dur: 0.34, gain: 0.08, from: 1568, to: 2093 },
+    ],
+    1.05,
+  ),
+  // Thunder: a far-off roll, not a single boom. Three low-passed noise swells overlap and fade at
+  // different speeds, with a faint crack up top; the low level keeps it behind the scene.
+  thunder: recipe(
+    [
+      { type: "noise", t: 0, dur: 1.75, gain: 0.34, attack: 0.14, filter: { type: "lowpass", from: 300, to: 60, q: 0.6 } },
+      { type: "noise", t: 0.3, dur: 1.5, gain: 0.3, attack: 0.2, filter: { type: "lowpass", from: 170, to: 45, q: 0.5 } },
+      { type: "noise", t: 0.62, dur: 1.1, gain: 0.24, attack: 0.22, filter: { type: "lowpass", from: 110, to: 34, q: 0.5 } },
+      { type: "noise", t: 0.04, dur: 0.4, gain: 0.08, attack: 0.03, filter: { type: "bandpass", from: 900, to: 180, q: 0.8 } },
+      { type: "tone", wave: "triangle", t: 0.1, dur: 1.1, gain: 0.1, attack: 0.12, from: 58, to: 30 },
+    ],
+    1.15,
+  ),
+  // Ignite: two flint clicks, then the flame catching. The rising band-pass is the whoosh of the fire taking.
+  ignite: recipe(
+    [
+      { type: "noise", t: 0, dur: 0.032, gain: 0.3, filter: { type: "highpass", from: 3200, to: 2400, q: 0.8 } },
+      { type: "noise", t: 0.055, dur: 0.026, gain: 0.22, filter: { type: "highpass", from: 2600, to: 1500, q: 0.8 } },
+      { type: "noise", t: 0.09, dur: 0.55, gain: 0.3, attack: 0.04, filter: { type: "bandpass", from: 480, to: 1750, q: 0.9 } },
+      { type: "noise", t: 0.13, dur: 0.58, gain: 0.18, attack: 0.06, filter: { type: "lowpass", from: 900, to: 280, q: 0.6 } },
+      { type: "tone", wave: "triangle", t: 0.1, dur: 0.3, gain: 0.12, attack: 0.03, from: 320, to: 190 },
+    ],
+    2,
+  ),
+  // Block: shield metal. Inharmonic square/triangle ring over a bright band-passed slap.
+  block: recipe(
+    [
+      { type: "tone", wave: "square", t: 0, dur: 0.09, gain: 0.16, from: 1400 },
+      { type: "tone", wave: "square", t: 0.004, dur: 0.07, gain: 0.12, from: 2093 },
+      { type: "tone", wave: "triangle", t: 0, dur: 0.3, gain: 0.16, from: 2637 },
+      { type: "tone", wave: "triangle", t: 0.008, dur: 0.19, gain: 0.09, from: 3520 },
+      { type: "noise", t: 0, dur: 0.11, gain: 0.24, filter: { type: "bandpass", from: 3600, to: 1500, q: 2.4 } },
+    ],
+    1.1,
+  ),
+  // Rock hit: a dull thud in the body and a short gritty edge, no ring at all.
+  rockHit: recipe(
+    [
+      { type: "noise", t: 0, dur: 0.22, gain: 0.36, filter: { type: "lowpass", from: 760, to: 140, q: 0.8 } },
+      { type: "tone", wave: "triangle", t: 0, dur: 0.18, gain: 0.28, from: 122, to: 58 },
+      { type: "tone", wave: "square", t: 0, dur: 0.08, gain: 0.12, from: 190, to: 80 },
+      { type: "noise", t: 0.01, dur: 0.06, gain: 0.1, filter: { type: "bandpass", from: 1600, to: 700, q: 1.2 } },
+    ],
+    0.95,
+  ),
 };
 
 export const SOUND_NAMES = Object.keys(SOUNDS);
 export const durationOf = (name) => SOUNDS[name]?.dur ?? 0;
+
+// ---- ambience data ---------------------------------------------------------------------------------
+// A bed is a few filtered-noise layers (each with a slow sine on its gain so it breathes) plus an optional
+// grain loop: "drip" is rain crackle, "cricket" is a field of chirps. Both the WebAudio builder and the offline
+// renderer read this, so a change here is audible and visible in one go.
+export const AMBIENCES = {
+  forest: {
+    layers: [
+      { type: "bandpass", freq: 520, q: 0.7, gain: 0.2, lfo: 0.08, depth: 0.05 },
+      { type: "lowpass", freq: 220, q: 0.5, gain: 0.12, lfo: 0.05, depth: 0.03 },
+    ],
+  },
+  fire: {
+    layers: [
+      { type: "bandpass", freq: 1800, q: 0.9, gain: 0.16, lfo: 0.9, depth: 0.05 },
+      { type: "lowpass", freq: 320, q: 0.6, gain: 0.14, lfo: 0.4, depth: 0.05 },
+    ],
+  },
+  rain: {
+    layers: [
+      // the sheet of rain, a patter band, and the wet body of the downpour further off
+      { type: "highpass", freq: 1500, q: 0.6, gain: 0.19, lfo: 0.13, depth: 0.04 },
+      { type: "bandpass", freq: 2800, q: 0.9, gain: 0.1, lfo: 0.37, depth: 0.05 },
+      { type: "lowpass", freq: 480, q: 0.5, gain: 0.09, lfo: 0.07, depth: 0.02 },
+    ],
+    grains: { kind: "drip", gain: 0.13, perSecond: 11 },
+  },
+  lake: {
+    layers: [
+      // slow lapping under the shore, a thin surface shimmer, and small wavelets over both
+      { type: "lowpass", freq: 620, q: 0.9, gain: 0.16, lfo: 0.21, depth: 0.1 },
+      { type: "bandpass", freq: 1700, q: 0.7, gain: 0.07, lfo: 0.09, depth: 0.04 },
+      { type: "bandpass", freq: 950, q: 1.1, gain: 0.05, lfo: 0.55, depth: 0.04 },
+    ],
+    grains: { kind: "cricket", gain: 0.075, perSecond: 2.2 },
+  },
+};
+export const AMBIENCE_MODES = Object.keys(AMBIENCES);
+export const GRAIN_SECONDS = 3;
+const GRAIN_SEED = { drip: 0x5a17, cricket: 0x2c09 };
 
 // ---- offline preview ------------------------------------------------------------------------------
 // The same recipes as plain samples, so tools and pictures can look at a sound without WebAudio.
@@ -126,6 +231,68 @@ export function renderSound(name, rate = 8000) {
         s = waveSample(v.wave, phase);
       }
       out[start + i] += s * env;
+    }
+  }
+  return out;
+}
+
+/**
+ * Ambient beds as plain samples: layers of filtered noise with their slow gain LFO, plus the grain loop
+ * (rain drips, crickets). Same data the WebAudio builder uses, so a snapshot shows the bed you hear.
+ */
+export function renderAmbience(mode, seconds = 2, rate = 8000) {
+  const bed = AMBIENCES[mode];
+  if (!bed) return new Float32Array(0);
+  const n = Math.ceil(seconds * rate), out = new Float32Array(n);
+  const rand = mulberry32(0x2f19);
+  for (const layer of bed.layers) {
+    const state = { lp: 0, mid: 0, hp: 0 };
+    for (let i = 0; i < n; i++) {
+      const s = filterSample(rand() * 2 - 1, layer, 0.5, rate, state);
+      const lfo = layer.lfo ? Math.sin((i / rate) * Math.PI * 2 * layer.lfo) : 0;
+      out[i] += s * (layer.gain + (layer.depth ?? 0) * lfo);
+    }
+  }
+  if (bed.grains) {
+    const grains = grainSamples(bed.grains, GRAIN_SECONDS, rate);
+    for (let i = 0; i < n; i++) out[i] += grains[i % grains.length] * bed.grains.gain;
+  }
+  return out;
+}
+
+/** When the grains of a loop start, in seconds. Shared by the synth and the picture. */
+export function grainTimes(grain, seconds = GRAIN_SECONDS) {
+  const rand = mulberry32(GRAIN_SEED[grain.kind] ?? 0x1234);
+  const count = Math.max(1, Math.round(seconds * (grain.perSecond ?? 4)));
+  const times = [];
+  for (let g = 0; g < count; g++) times.push(((g + rand() * 0.6) / count) * seconds);
+  return times;
+}
+
+/** The looping grain loop: sparse drips or cricket chirps, deterministic per kind. */
+export function grainSamples(grain, seconds = GRAIN_SECONDS, rate = 8000) {
+  const out = new Float32Array(Math.ceil(seconds * rate));
+  const rand = mulberry32((GRAIN_SEED[grain.kind] ?? 0x1234) ^ 0x9e37);
+  const times = grainTimes(grain, seconds);
+  for (let g = 0; g < times.length; g++) {
+    const at = Math.min(out.length - 1, Math.floor(times[g] * rate));
+    if (grain.kind === "cricket") {
+      // a chirp is three short sine pulses at ~4 kHz, spaced like a field cricket
+      const freq = 4000 + rand() * 700, pulse = Math.round(rate * 0.016), gap = Math.round(rate * 0.014);
+      for (let p = 0; p < 3; p++) {
+        const start = at + p * (pulse + gap);
+        for (let j = 0; j < pulse && start + j < out.length; j++) {
+          out[start + j] += Math.sin((j / rate) * Math.PI * 2 * freq) * Math.sin((j / pulse) * Math.PI) * 0.5;
+        }
+      }
+    } else {
+      // a drip: a tiny high ping with a click of noise on its front
+      const freq = 1600 + rand() * 2400, len = Math.round(rate * 0.045), k = 0.6 + rand() * 0.4;
+      for (let j = 0; j < len && at + j < out.length; j++) {
+        const env = Math.exp(-j / (rate * 0.009));
+        const click = j < rate * 0.004 ? (rand() * 2 - 1) * 0.5 : 0;
+        out[at + j] += (Math.sin((j / rate) * Math.PI * 2 * freq) * 0.55 + click) * env * k;
+      }
     }
   }
   return out;
@@ -256,41 +423,49 @@ function scheduleNoise(ctx, dest, v, t0, level) {
   src.stop(end + 0.02);
 }
 
-/** The two quiet noise beds: wind in the trees, and fire with a slow flicker. */
+/** The quiet beds: wind in the trees, fire, rain, lakeside. Data lives in AMBIENCES. */
 function buildAmbience(ctx, dest, mode) {
+  const bed = AMBIENCES[mode];
   const sources = [], nodes = [];
-  const layer = ({ type, freq, q, gain, lfo, depth }) => {
-    const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), bed = ctx.createGain();
+  if (!bed) return { sources, nodes };
+  for (const layer of bed.layers) {
+    const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gainNode = ctx.createGain();
     src.buffer = noiseBuffer(ctx);
     src.loop = true;
-    filter.type = type;
-    filter.frequency.value = freq;
-    filter.Q.value = q;
-    bed.gain.value = 0;
-    src.connect(filter).connect(bed).connect(dest);
+    filter.type = layer.type;
+    filter.frequency.value = layer.freq;
+    filter.Q.value = layer.q;
+    gainNode.gain.value = 0;
+    src.connect(filter).connect(gainNode).connect(dest);
     src.start();
-    bed.gain.setTargetAtTime(gain, ctx.currentTime, 1.5);
-    if (lfo) {
+    gainNode.gain.setTargetAtTime(layer.gain, ctx.currentTime, 1.5);
+    if (layer.lfo) {
       const osc = ctx.createOscillator(), amount = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.value = lfo;
-      amount.gain.value = depth;
-      osc.connect(amount).connect(bed.gain);
+      osc.frequency.value = layer.lfo;
+      amount.gain.value = layer.depth ?? 0;
+      osc.connect(amount).connect(gainNode.gain);
       osc.start();
       sources.push(osc);
       nodes.push(amount);
     }
     sources.push(src);
-    nodes.push(filter, bed);
-  };
-  if (mode === "forest") {
-    // wind: a wide low band that swells every dozen seconds
-    layer({ type: "bandpass", freq: 520, q: 0.7, gain: 0.2, lfo: 0.08, depth: 0.05 });
-    layer({ type: "lowpass", freq: 220, q: 0.5, gain: 0.12, lfo: 0.05, depth: 0.03 });
-  } else {
-    // fire: a hiss with a quick flicker and a low rumble under it
-    layer({ type: "bandpass", freq: 1800, q: 0.9, gain: 0.16, lfo: 0.9, depth: 0.05 });
-    layer({ type: "lowpass", freq: 320, q: 0.6, gain: 0.14, lfo: 0.4, depth: 0.05 });
+    nodes.push(filter, gainNode);
+  }
+  if (bed.grains) {
+    // Drips and crickets: a looping buffer of grains, faded in like the layers.
+    const rate = ctx.sampleRate || 44100, data = grainSamples(bed.grains, GRAIN_SECONDS, rate);
+    const src = ctx.createBufferSource(), grainGain = ctx.createGain();
+    const buffer = ctx.createBuffer(1, data.length, rate);
+    buffer.getChannelData(0).set(data);
+    src.buffer = buffer;
+    src.loop = true;
+    grainGain.gain.value = 0;
+    src.connect(grainGain).connect(dest);
+    src.start();
+    grainGain.gain.setTargetAtTime(bed.grains.gain, ctx.currentTime, 1.5);
+    sources.push(src);
+    nodes.push(grainGain);
   }
   return { sources, nodes };
 }
@@ -395,7 +570,7 @@ export function createSfx(options = {}) {
   }
 
   const ambience = (mode) => {
-    const next = mode === "forest" || mode === "fire" ? mode : null;
+    const next = AMBIENCES[mode] ? mode : null;
     ambienceWanted = next;
     if (next === ambienceMode) return;
     if (!next) {
