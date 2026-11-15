@@ -3,9 +3,9 @@ import { createFrame } from "../vendor/pixelfx/src/core/index.js";
 import { createEnemy, ENEMY_KINDS } from "../src/game/enemies/enemies.js";
 
 describe("forest enemies", () => {
-  it("exposes the three kinds with their expected hit points", () => {
-    expect(ENEMY_KINDS).toEqual(["gnome", "orc", "ogre"]);
-    expect(ENEMY_KINDS.map((kind) => createEnemy(kind).maxHp)).toEqual([2, 3, 5]);
+  it("exposes all four kinds with their expected hit points", () => {
+    expect(ENEMY_KINDS).toEqual(["gnome", "orc", "ogre", "golem"]);
+    expect(ENEMY_KINDS.map((kind) => createEnemy(kind).maxHp)).toEqual([2, 3, 5, 7]);
   });
 
   it("approaches from the right and stops at its attack range", () => {
@@ -36,6 +36,7 @@ describe("forest enemies", () => {
     ["gnome", 2],
     ["orc", 3],
     ["ogre", 5],
+    ["golem", 7],
   ])("tracks %s HP and dies after %i hits", (kind, hits) => {
     const enemy = createEnemy(kind);
     for (let i = 1; i < hits; i++) {
@@ -64,5 +65,12 @@ describe("forest enemies", () => {
       enemy.draw(frame);
       expect(frame.color.some(Boolean)).toBe(true);
     }
+  });
+
+  it("lets the half-orc block once without reducing its health", () => {
+    const enemy = createEnemy("orc", { x: 40, y: 150 });
+    enemy.approach(20);
+    expect(enemy.hit(1)).toBe(3);
+    expect(enemy.hit(1)).toBe(2);
   });
 });
