@@ -51,7 +51,7 @@ function startSession(preset, restored = load(preset), { userGesture = true } = 
   const heroine = createHeroine({ x: 112, y: GROUND_Y });
   timer = session;
   activeForest = forest;
-  director = createDirector({ stage, forest, heroine, timer: session, sfx, progress, ui });
+  director = createDirector({ stage, forest, heroine, timer: session, sfx, progress, ui, encounterSpeed: timerSpeed() });
   ui.showHud(preset);
   session.on("change", () => save(session));
   save(session);

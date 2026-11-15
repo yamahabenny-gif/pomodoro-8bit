@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { createHeroine } from "../src/game/heroine/heroine.js";
-import { createDirector } from "../src/game/director/director.js";
+import { createDirector, enemyKindForEncounter } from "../src/game/director/director.js";
 import { loadSavedSession } from "../src/game/director/session.js";
 import { PRESETS } from "../src/config/presets.js";
 import { createTimer } from "../src/timer/timer.js";
 import { clear, load, STORAGE_KEY } from "../src/timer/persist.js";
 
-function makeHarness(phase = "focus") {
+function makeHarness(phase = "focus", encounterSpeed = 1) {
   const listeners = new Map([["phase", new Set()], ["end", new Set()]]);
   const state = { phase, running: true, remainingMs: 60_000, totalMs: 60_000, cycle: 1, completedFocus: 0 };
   const timer = {
@@ -16,10 +16,11 @@ function makeHarness(phase = "focus") {
       return () => listeners.get(event)?.delete(fn);
     },
     changePhase(next) {
+      if (state.phase !== "focus" && next === "focus") state.cycle += 1;
       state.phase = next;
       state.totalMs = next === "long" ? 1_200_000 : next === "short" ? 300_000 : 1_500_000;
       state.remainingMs = state.totalMs;
-      for (const fn of listeners.get("phase")) fn({ phase: next, cycle: 1, totalMs: state.totalMs });
+      for (const fn of listeners.get("phase")) fn({ phase: next, cycle: state.cycle, totalMs: state.totalMs });
     },
   };
   const forest = {
@@ -31,7 +32,7 @@ function makeHarness(phase = "focus") {
   const sounds = [];
   const ambiences = [];
   const sfx = { play: (name) => sounds.push(name), ambience: (name) => ambiences.push(name), notify: (...args) => sounds.push(args) };
-  const director = createDirector({ stage: { frame: {} }, forest, heroine, timer, sfx });
+  const director = createDirector({ stage: { frame: {} }, forest, heroine, timer, sfx, encounterSpeed });
   return { director, timer, state, forest, heroine, sounds, ambiences };
 }
 
@@ -115,7 +116,7 @@ describe("director", () => {
       expect(timer.state().phase).toBe("short");
       expect(forest.mode).toBe("camp");
       expect(heroine.anim).toBe("sit");
-      expect(heroine.x).toBe(185);
+      expect(heroine.x).toBe(42);
       clear();
       expect(loadSavedSession(PRESETS, load)).toBeNull();
     } finally {
@@ -136,6 +137,14 @@ describe("director", () => {
     expect(kills.gnome).toBeGreaterThan(0);
     expect(kills.orc, JSON.stringify({ kills, sounds: sounds.slice(-30) })).toBeGreaterThan(0);
     expect(kills.ogre).toBeGreaterThan(0);
+  });
+
+  it("brings ogre and golem into accelerated encounter order while retaining late normal golems", () => {
+    expect([0, 1, 2, 3].map((index) => enemyKindForEncounter(index, 60)))
+      .toEqual(["gnome", "gnome", "ogre", "golem"]);
+    expect(enemyKindForEncounter(2, 600)).toBe("golem");
+    expect(enemyKindForEncounter(34, 1)).toBe("golem");
+    expect(enemyKindForEncounter(43, 1)).toBe("golem");
   });
 
   it("plays level-up feedback and syncs progress on frames", () => {

@@ -3,12 +3,14 @@
 // WAVE 5 (issue "Regie 2"): twice as many encounters; breaks use src/game/scene/rest.js (storm or lake, the
 // heroine lights the fire); createDirector also takes { progress } and shows level-ups on stage.
 //
-// createDirector({ stage, forest, heroine, timer, sfx, progress, ui }) returns
+// createDirector({ stage, forest, heroine, timer, sfx, progress, ui, encounterSpeed }) returns
 //   { update(dt), draw(), background(), stats() }
+// enemyKindForEncounter(index, speed) exposes the deterministic encounter mix.
 //   focus phase: the heroine walks, an enemy appears, they fight, it dies, she walks on. Encounters are paced to
 //                the focus length (roughly one every 30-90 s, tougher foes later in the phase) and never end mid-swing
 //                when the phase ends: the current foe flees or poofs during the transition.
-//   breaks alternate storm and lake scenes; she lights the fire and rests at the scene's seatX.
+//   breaks alternate storm and lake by focus cycle; reloads resolve the same scene from timer.state().cycle.
+//   accelerated demos (encounterSpeed >= 60) bring ogre and golem into the opening fights.
 //   back to focus: she stands up, stretches, walks on.
 //   stats(): { kills: { gnome, orc, ogre, golem }, focusDone } for the HUD; persisted per day.
 
@@ -72,17 +74,26 @@ function logicalFocusInterval(totalMs) {
   return clamp(totalMs / 48, 15_000, 45_000);
 }
 
-function kindForEncounter(index, totalMs) {
-  const count = Math.max(1, Math.ceil(totalMs / logicalFocusInterval(totalMs)));
-  const golems = new Set([Math.floor((count - 1) * 0.74), Math.floor((count - 1) * 0.92)]);
-  if (golems.has(index)) return "golem";
-  const slot = index % 8;
-  if (slot === 3 || slot === 7) return "orc";
-  if (slot === 5) return "ogre";
-  return "gnome";
+function restKindFor(cycle) {
+  return REST_KINDS[(Math.max(1, Number(cycle) || 1) - 1) % REST_KINDS.length];
 }
 
-export function createDirector({ stage, forest, heroine, timer, sfx, progress, ui }) {
+export function enemyKindForEncounter(index, speed = 1) {
+  if (speed >= 600) {
+    const demo = ["gnome", "ogre", "golem", "orc", "gnome"];
+    return demo[index % demo.length];
+  }
+  if (speed >= 60) {
+    // At speed 60 the focus lasts 25 real seconds; put late-game foes in the first four fights.
+    const demo = ["gnome", "gnome", "ogre", "golem", "orc", "gnome", "orc", "gnome", "ogre", "golem"];
+    return demo[index % demo.length];
+  }
+  if (index === 34 || index === 43) return "golem";
+  const mixed = ["gnome", "gnome", "gnome", "orc", "gnome", "ogre", "gnome", "orc", "gnome", "gnome", "ogre", "gnome"];
+  return mixed[index % mixed.length];
+}
+
+export function createDirector({ stage, forest, heroine, timer, sfx, progress, ui, encounterSpeed = 1 }) {
   if (!stage || !forest || !heroine || !timer) {
     throw new TypeError("createDirector requires stage, forest, heroine and timer");
   }
@@ -103,7 +114,6 @@ export function createDirector({ stage, forest, heroine, timer, sfx, progress, u
   let pendingPhase = null;
   let transitionFoe = false;
   let rest = null;
-  let lastRestKind = null;
   let thunderIn = 0;
   let levelUpQueued = false;
   let levelUpEffect = 0;
@@ -113,7 +123,6 @@ export function createDirector({ stage, forest, heroine, timer, sfx, progress, u
 
   forest.setMode(modeFor(phase), { instant: true });
   if (phase !== "focus") {
-    lastRestKind = REST_KINDS[REST_KINDS.length - 1];
     enterRest(phase, true);
   }
   heroine.x = phase === "focus" ? HERO_X : rest.seatX;
@@ -129,8 +138,7 @@ export function createDirector({ stage, forest, heroine, timer, sfx, progress, u
   });
 
   function enterRest(nextPhase, restored = false) {
-    const kind = REST_KINDS.find((candidate) => candidate !== lastRestKind) ?? REST_KINDS[0];
-    lastRestKind = kind;
+    const kind = restKindFor(phaseState.cycle);
     rest = createRest(kind, { night: nextPhase === "long" });
     if (restored) {
       rest.ignite();
@@ -226,7 +234,7 @@ export function createDirector({ stage, forest, heroine, timer, sfx, progress, u
   });
 
   function spawnEncounter() {
-    const kind = kindForEncounter(encounterIndex, phaseState.totalMs);
+    const kind = enemyKindForEncounter(encounterIndex, encounterSpeed);
     encounterIndex += 1;
     enemy = createEnemy(kind, { x: 270, y: GROUND_Y });
     enemy.approach(heroine.x + 10);
