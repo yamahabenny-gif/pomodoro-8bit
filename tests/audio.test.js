@@ -5,8 +5,13 @@ import {
   requestPermission,
   renderSound,
   renderAmbience,
+  renderBed,
+  grainSamples,
+  grainTimes,
   AMBIENCES,
   AMBIENCE_MODES,
+  AMBIENCE_FADE_IN,
+  AMBIENCE_FADE_OUT,
   SOUNDS,
   SOUND_NAMES,
   durationOf,
@@ -23,16 +28,32 @@ function fakeStorage(initial = {}) {
   };
 }
 
-/** The smallest thing that satisfies the WebAudio calls sfx makes. */
+/** The smallest thing that satisfies the WebAudio calls sfx makes; it records the automation it is asked for. */
 function fakeContext() {
-  const created = { oscillators: 0, sources: 0, gains: 0, filters: 0 };
-  const param = () => ({
-    value: 0,
-    setValueAtTime() {},
-    linearRampToValueAtTime() {},
-    exponentialRampToValueAtTime() {},
-    setTargetAtTime() {},
-  });
+  const created = { oscillators: 0, sources: 0, gains: 0, filters: 0, params: [], stops: [] };
+  const param = () => {
+    const p = {
+      value: 0,
+      calls: [],
+      setValueAtTime(v, t) {
+        p.calls.push({ kind: "set", v, t });
+      },
+      linearRampToValueAtTime(v, t) {
+        p.calls.push({ kind: "linear", v, t });
+      },
+      exponentialRampToValueAtTime(v, t) {
+        p.calls.push({ kind: "exp", v, t });
+      },
+      setTargetAtTime(v, t, c) {
+        p.calls.push({ kind: "target", v, t, c });
+      },
+      cancelScheduledValues(t) {
+        p.calls.push({ kind: "cancel", t });
+      },
+    };
+    created.params.push(p);
+    return p;
+  };
   const node = () => ({ connect: (next) => next, disconnect() {} });
   const ctx = {
     currentTime: 0,
@@ -57,7 +78,15 @@ function fakeContext() {
     },
     createBufferSource() {
       created.sources++;
-      return { ...node(), buffer: null, loop: false, start() {}, stop() {} };
+      return {
+        ...node(),
+        buffer: null,
+        loop: false,
+        start() {},
+        stop(t) {
+          created.stops.push(t);
+        },
+      };
     },
     createBuffer: (_channels, length) => ({ getChannelData: () => new Float32Array(length) }),
   };
@@ -221,6 +250,25 @@ describe("WebAudio scheduling", () => {
     sfx.unlock();
     expect(created.sources).toBeGreaterThan(before);
   });
+
+  it("swells a bed in over two seconds and fades it out over 1.5", () => {
+    const { ctx, created } = fakeContext();
+    const sfx = createSfx({ storage: fakeStorage(), createContext: () => ctx });
+    sfx.unlock();
+    sfx.ambience("rain");
+    const ramps = () => created.params.flatMap((p) => p.calls);
+    expect(
+      ramps().some((c) => c.kind === "linear" && Math.abs(c.v - 1) < 1e-6 && Math.abs(c.t - AMBIENCE_FADE_IN) < 1e-6),
+    ).toBe(true);
+    const stopsBefore = created.stops.length;
+    sfx.ambience(null);
+    expect(
+      ramps().some((c) => c.kind === "linear" && c.v < 0.001 && Math.abs(c.t - AMBIENCE_FADE_OUT) < 1e-6),
+    ).toBe(true);
+    // the sources are stopped when the tail is over, not cut off on the spot
+    expect(created.stops.length).toBeGreaterThan(stopsBefore);
+    expect(created.stops.at(-1)).toBeCloseTo(AMBIENCE_FADE_OUT, 6);
+  });
 });
 
 describe("sound design", () => {
@@ -312,7 +360,6 @@ describe("wave 4 sounds", () => {
 describe("wave 4 ambience", () => {
   it("has the two new beds next to forest and fire", () => {
     expect(AMBIENCE_MODES).toEqual(["forest", "fire", "rain", "lake"]);
-    expect(AMBIENCES.rain.layers.some((l) => l.type === "highpass")).toBe(true);
     expect(AMBIENCES.rain.grains.kind).toBe("drip");
     expect(AMBIENCES.lake.grains.kind).toBe("cricket");
     expect(AMBIENCES.lake.layers.some((l) => (l.lfo ?? 1) < 0.3)).toBe(true); // slow lapping
@@ -327,5 +374,114 @@ describe("wave 4 ambience", () => {
       expect(a, mode).toEqual(b);
     }
     expect(renderAmbience("nope")).toHaveLength(0);
+  });
+});
+
+// ---- issue 58: the rain must be a calm bed, not a hiss ------------------------------------------------------
+
+/** AMBIENCES.rain on main before issue 58. The new bed is measured against it, through the same renderer. */
+const OLD_RAIN = {
+  layers: [
+    { type: "highpass", freq: 1500, q: 0.6, gain: 0.19, lfo: 0.13, depth: 0.04 },
+    { type: "bandpass", freq: 2800, q: 0.9, gain: 0.1, lfo: 0.37, depth: 0.05 },
+    { type: "lowpass", freq: 480, q: 0.5, gain: 0.09, lfo: 0.07, depth: 0.02 },
+  ],
+  grains: { kind: "drip", gain: 0.13, perSecond: 11, seconds: 3 },
+};
+
+/** Energy above `cut`, as a share of the total: a 4th-order high-pass (two biquads), then RMS. */
+function highShare(samples, cut, rate = 16000) {
+  let out = samples;
+  for (let pass = 0; pass < 2; pass++) {
+    const w0 = (2 * Math.PI * cut) / rate, cos = Math.cos(w0), alpha = Math.sin(w0) / (2 * Math.SQRT1_2);
+    const a0 = 1 + alpha;
+    const b0 = (1 + cos) / 2 / a0, b1 = -(1 + cos) / a0, b2 = b0, a1 = (-2 * cos) / a0, a2 = (1 - alpha) / a0;
+    const y = new Float32Array(out.length);
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < out.length; i++) {
+      const x = out[i], v = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x; y2 = y1; y1 = v;
+      y[i] = v;
+    }
+    out = y;
+  }
+  const rms = (s) => Math.sqrt(s.reduce((a, x) => a + x * x, 0) / s.length);
+  return (rms(out) / rms(samples)) ** 2;
+}
+
+/** Loudest band of a spectrum, as a frequency: coarse biquad sweep, enough to catch a bright bed. */
+function loudestBand(samples, rate = 16000) {
+  const rms = (s) => Math.sqrt(s.reduce((a, x) => a + x * x, 0) / s.length);
+  let best = 0, bestF = 0;
+  for (let f = 120; f < 8000; f *= Math.pow(2, 1 / 6)) {
+    const w0 = (2 * Math.PI * f) / rate, cos = Math.cos(w0), alpha = Math.sin(w0) / (2 * 8.65), a0 = 1 + alpha;
+    const b0 = alpha / a0, b2 = -alpha / a0, a1 = (-2 * cos) / a0, a2 = (1 - alpha) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0, sum = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const x = samples[i], v = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x; y2 = y1; y1 = v;
+      if (i > rate * 0.05) sum += v * v;
+    }
+    if (Math.sqrt(sum / samples.length) > best) {
+      best = Math.sqrt(sum / samples.length);
+      bestF = f;
+    }
+  }
+  return bestF;
+}
+
+describe("issue 58: a calmer rain bed", () => {
+  const bed = renderAmbience("rain", 12, 16000);
+  const before = renderBed(OLD_RAIN, 12, 16000);
+
+  it("is dark: no high-pass hiss, everything above 4 kHz is gone", () => {
+    expect(AMBIENCES.rain.layers.every((l) => l.type !== "highpass")).toBe(true);
+    for (const layer of AMBIENCES.rain.layers) {
+      if (layer.type === "lowpass") expect(layer.freq).toBeLessThanOrEqual(1200);
+      expect(layer.freq).toBeLessThan(4000); // nothing sits up in the air band
+    }
+    // The old bed put more than half of its energy above 4 kHz; the new one barely reaches it.
+    expect(highShare(before, 4000)).toBeGreaterThan(0.3);
+    expect(highShare(bed, 4000)).toBeLessThan(0.05);
+    expect(loudestBand(bed)).toBeLessThan(1500);
+  });
+
+  it("is about half as loud as before", () => {
+    const peakBefore = peakOf(before), peakNow = peakOf(bed);
+    expect(peakNow).toBeLessThan(peakBefore * 0.6); // -6 dB or more
+    expect(peakNow).toBeGreaterThan(peakBefore * 0.3); // but still there, not gone
+    // and it sits in the same league as the other beds instead of shouting over them
+    expect(peakNow).toBeLessThan(peakOf(renderAmbience("forest", 12, 16000)) * 1.4);
+  });
+
+  it("breathes on a very slow LFO instead of a rattle", () => {
+    const lfos = AMBIENCES.rain.layers.map((l) => l.lfo).filter(Boolean);
+    expect(lfos.length).toBeGreaterThanOrEqual(2);
+    for (const lfo of lfos) expect(lfo).toBeLessThan(0.1); // << the old 0.37 Hz patter
+    expect(lfos.some((lfo) => lfo >= 0.03 && lfo <= 0.08)).toBe(true); // the slow leaf layer
+    expect(AMBIENCES.rain.layers.some((l) => (l.depth ?? 0) > 0)).toBe(true);
+  });
+
+  it("drops only a few soft drops, out of a long loop that never repeats audibly", () => {
+    const grains = AMBIENCES.rain.grains;
+    expect(grains.perSecond).toBeGreaterThanOrEqual(2);
+    expect(grains.perSecond).toBeLessThanOrEqual(4);
+    expect(grains.seconds).toBeGreaterThanOrEqual(12);
+
+    const loop = grainSamples(grains, grains.seconds, 16000);
+    expect(loop.length).toBe(grains.seconds * 16000);
+    expect(peakOf(loop)).toBeGreaterThan(0.02); // they are there
+    expect(peakOf(loop)).toBeLessThan(0.6); // and quiet
+    // no crackle: the old drips pinged at 1.6-4 kHz with a noise click, the new ones stay in the rain's band
+    expect(highShare(loop, 1500)).toBeLessThan(0.02);
+
+    // irregular spacing: the gaps between drops vary, so the loop has no pulse to lock onto
+    const times = grainTimes(grains, grains.seconds);
+    expect(times.length).toBe(grains.seconds * grains.perSecond);
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    const mean = gaps.reduce((a, g) => a + g, 0) / gaps.length;
+    expect(Math.min(...gaps)).toBeGreaterThan(mean * 0.1);
+    expect(Math.max(...gaps)).toBeLessThan(mean * 2.2);
+    expect(new Set(gaps.map((g) => g.toFixed(3))).size).toBeGreaterThan(gaps.length * 0.8);
   });
 });
