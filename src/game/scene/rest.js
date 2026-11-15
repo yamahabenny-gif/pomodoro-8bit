@@ -71,10 +71,11 @@ function makeBackground(kind, night) {
   drawTreeLayers(bg, kind);
   if (kind === "storm") {
     // Wet forest floor with long puddles holding a blue-violet reflection.
-    const puddles = [[60, 162, 40, 8], [148, 168, 31, 7], [219, 164, 25, 8], [285, 160, 30, 8]];
+    const puddles = [[16, 161, 18, 7], [278, 159, 26, 8], [307, 166, 16, 7]];
     for (let y = 130; y < H; y++) for (let x = 0; x < W; x++) {
       const edge = y === 130 || y === 131;
-      bg[y * W + x] = edge ? pal.groundTop : pal.ground;
+      const dry = x >= 43 && x <= 255 && y >= 138;
+      bg[y * W + x] = edge ? pal.groundTop : dry ? mix(pal.ground, hex("#302b3a"), 0.42) : pal.ground;
       for (let i = 0; i < puddles.length; i++) {
         const [cx, cy, rx, ry] = puddles[i], dy = Math.abs(y - cy);
         const wobble = Math.round(Math.sin(y * 0.7 + i * 3) * 2), width = rx * Math.sqrt(Math.max(0, 1 - (dy / ry) ** 2));
@@ -85,6 +86,7 @@ function makeBackground(kind, night) {
         }
       }
     }
+    drawStormGround(bg, pal);
   } else {
     // Lake occupies the middle distance; the foreground shore remains a clear place for the heroine and fire.
     for (let y = 101; y < 151; y++) for (let x = 0; x < W; x++) {
@@ -166,6 +168,35 @@ function drawStormClouds(buf) {
   ]) cloudMass(buf, x, y, rx, ry, c, s);
 }
 
+function drawStormGround(buf, pal) {
+  const root = hex("#171523"), rootLit = hex("#393243"), grass = hex("#414b3b"), stone = hex("#343245");
+  // Roots crawl out of the cliff and break up the ground line; the space under the roof stays comparatively dry.
+  lineBuffer(buf, 48, 137, 63, 143, root, 3);
+  lineBuffer(buf, 63, 143, 81, 145, root, 2);
+  lineBuffer(buf, 82, 145, 109, 142, root, 2);
+  lineBuffer(buf, 52, 140, 65, 147, rootLit, 1);
+  lineBuffer(buf, 91, 146, 106, 151, root, 2);
+  lineBuffer(buf, 238, 143, 252, 147, root, 2);
+  lineBuffer(buf, 251, 147, 272, 142, root, 2);
+  lineBuffer(buf, 265, 145, 283, 151, rootLit, 1);
+  for (const [x, y, w] of [[20, 146, 12], [35, 144, 10], [57, 151, 8], [246, 148, 10], [272, 145, 12], [302, 148, 9]]) {
+    lineBuffer(buf, x, y, x - 3, y - w, grass, 1);
+    lineBuffer(buf, x + 1, y, x + 3, y - w * 0.72, grass, 1);
+    lineBuffer(buf, x + 3, y, x + 8, y - w * 0.85, grass, 1);
+  }
+  for (const [x, y, w, h] of [[31, 154, 7, 3], [117, 152, 4, 2], [184, 156, 5, 2], [264, 153, 7, 3], [310, 158, 5, 2]]) {
+    fillPolyBuffer(buf, [[x - w, y], [x - w + 2, y - h], [x, y - h - 1], [x + w - 1, y - h], [x + w, y], [x + 2, y + 1]], INK);
+    fillPolyBuffer(buf, [[x - w + 1, y - 1], [x - w + 3, y - h], [x, y - h], [x + w - 2, y - h], [x + w - 1, y - 1]], stone);
+    putBuffer(buf, x - 2, y - h, pal.rockLit);
+  }
+  // Fine rain sheen and scattered leaf litter on the exposed, wet patches.
+  for (let i = 0; i < 35; i++) {
+    const x = Math.floor(rand(332, i, 1) * W), y = 140 + Math.floor(rand(332, i, 2) * 35);
+    if (x > 64 && x < 245) continue;
+    if (rand(332, i, 3) > 0.45) lineBuffer(buf, x, y, x + 2, y, pal.rain, 1);
+  }
+}
+
 function drawTreeLayers(buf, kind) {
   const farTrunk = kind === "storm" ? hex("#29243c") : hex("#322d43");
   const farCanopy = kind === "storm" ? hex("#24223d") : hex("#2b293f");
@@ -245,33 +276,41 @@ export function createRest(kind, { night = false } = {}) {
   }
 
   function drawShelter(p) {
-    // A heavy rock lip and deep underside wrap over the resting place like a shallow cave.
-    const rock = [[70, 82], [81, 68], [99, 58], [125, 50], [157, 48], [182, 54], [208, 60], [231, 65], [253, 78], [258, 87], [245, 96], [222, 91], [198, 87], [174, 84], [150, 86], [124, 91], [100, 94], [80, 91]];
-    p.poly(rock, INK);
-    p.poly([[75, 81], [85, 70], [103, 61], [127, 54], [155, 52], [180, 58], [205, 64], [229, 69], [250, 81], [250, 87], [223, 83], [197, 79], [173, 77], [149, 78], [122, 83], [98, 87], [81, 87]], pal.rock);
-    p.poly([[85, 73], [104, 63], [128, 57], [154, 55], [179, 61], [203, 67], [225, 72], [240, 81], [220, 77], [196, 73], [174, 70], [150, 71], [124, 76], [101, 81]], pal.rockMid);
-    p.poly([[92, 70], [107, 63], [128, 59], [154, 58], [176, 63], [195, 68], [211, 73], [190, 71], [168, 67], [145, 66], [122, 69], [104, 75]], pal.rockLit);
-    // Ink-dark cave ceiling under the lip, with a broken moss edge and three stone facets.
-    p.poly([[83, 88], [102, 86], [124, 81], [149, 78], [174, 78], [199, 81], [223, 86], [247, 91], [242, 101], [218, 96], [194, 92], [169, 89], [145, 89], [120, 96], [98, 100], [83, 97]], pal.shelter);
-    p.poly([[90, 88], [109, 84], [132, 81], [151, 80], [175, 82], [196, 85], [216, 89], [202, 88], [180, 86], [157, 86], [135, 89], [114, 94]], pal.shelterTop);
-    p.poly([[85, 76], [96, 69], [103, 70], [108, 76], [102, 82], [92, 82]], pal.moss);
-    p.poly([[171, 68], [182, 69], [189, 74], [184, 78], [174, 75]], pal.moss);
-    p.poly([[225, 73], [235, 76], [241, 82], [237, 85], [229, 80]], pal.moss);
-    p.line(83, 91, 78, 132, INK, 2); p.line(78, 132, 91, 137, pal.rock);
-    p.poly([[78, 103], [98, 99], [107, 131], [82, 138]], pal.rock);
-    p.poly([[239, 98], [254, 95], [263, 130], [243, 137]], pal.rock);
-    p.poly([[77, 130], [264, 127], [268, 137], [75, 140]], pal.ground);
+    // One grounded cliff mass rises on the left and rolls out into a long, heavy roof.
+    const cliff = [[35, 141], [38, 117], [42, 99], [49, 80], [58, 66], [72, 56], [91, 50], [112, 47], [134, 49], [156, 54], [181, 59], [208, 64], [234, 70], [252, 79], [263, 90], [258, 99], [239, 95], [217, 91], [194, 87], [171, 84], [148, 81], [129, 82], [118, 89], [112, 106], [111, 126], [117, 141]];
+    p.poly(cliff, INK);
+    p.poly([[39, 137], [42, 116], [47, 98], [53, 81], [62, 68], [76, 59], [94, 54], [113, 52], [134, 54], [156, 59], [181, 64], [208, 69], [233, 75], [249, 83], [257, 90], [239, 89], [216, 85], [193, 81], [170, 78], [147, 76], [127, 77], [113, 84], [105, 103], [103, 126], [108, 138]], pal.rock);
+    // Sloped wall facets climb continuously into the overhang; the cave opening is inset behind the heroine.
+    p.poly([[41, 133], [45, 111], [51, 91], [59, 75], [71, 65], [87, 59], [102, 57], [91, 72], [86, 95], [85, 119], [91, 139]], pal.rockMid);
+    p.poly([[48, 102], [53, 83], [65, 70], [78, 64], [90, 62], [82, 73], [76, 91], [69, 110], [59, 128], [48, 136]], pal.rockLit);
+    p.poly([[88, 59], [104, 54], [123, 54], [146, 59], [171, 64], [197, 69], [223, 75], [246, 84], [258, 91], [238, 88], [215, 83], [191, 79], [168, 75], [145, 72], [123, 72], [104, 77], [92, 83], [84, 76]], pal.rockMid);
+    p.poly([[95, 58], [110, 55], [128, 57], [149, 61], [171, 66], [194, 70], [217, 75], [237, 82], [219, 79], [196, 75], [173, 71], [151, 67], [130, 65], [111, 67], [98, 72]], pal.rockLit);
+    // Deep, ink-shaded cave ceiling and back wall; there is no detached slab or support post.
+    p.poly([[104, 84], [119, 77], [138, 74], [159, 76], [183, 80], [207, 84], [232, 90], [252, 96], [246, 111], [235, 120], [231, 139], [116, 139], [111, 118], [111, 101]], pal.shelter);
+    p.poly([[111, 87], [128, 80], [146, 79], [166, 81], [190, 85], [214, 89], [236, 96], [243, 101], [231, 102], [209, 97], [186, 93], [164, 90], [143, 88], [124, 91]], pal.shelterTop);
+    // Tinted stone seams, fractured edges and a few lichen patches anchor the hand-built cliff.
+    p.polyline([[50, 105], [57, 98], [55, 89], [62, 83]], INK);
+    p.polyline([[78, 87], [84, 81], [81, 75], [88, 69]], INK);
+    p.polyline([[96, 124], [103, 117], [100, 108], [106, 101]], INK);
+    p.polyline([[125, 73], [133, 70], [136, 64]], INK);
+    p.polyline([[172, 74], [180, 72], [184, 67]], INK);
+    p.polyline([[211, 80], [218, 78], [220, 73]], INK);
+    p.poly([[57, 78], [67, 68], [77, 65], [81, 68], [75, 76], [66, 82]], pal.moss);
+    p.poly([[100, 53], [111, 50], [126, 52], [132, 55], [119, 56], [107, 59]], pal.moss);
+    p.poly([[161, 59], [171, 61], [178, 65], [174, 67], [165, 64]], pal.moss);
+    p.poly([[222, 72], [235, 75], [244, 80], [239, 82], [229, 78]], pal.moss);
+    for (const [x, y, h] of [[59, 74, 5], [69, 67, 4], [108, 53, 4], [118, 52, 6], [169, 63, 5], [233, 76, 5]])
+      p.line(x, y, x + ((x % 3) - 1), y - h, pal.moss);
     if (lit) {
-      // Warm bounce catches the underside and a nearby floor patch in gold without washing out stone texture.
-      p.glow(fireX - 37, 82, 88, pal.glow, 0.27);
-      p.glow(fireX - 20, 127, 68, pal.ember, 0.22);
-      p.poly([[195, 84], [211, 86], [222, 91], [212, 91], [197, 89]], pal.ember);
-      p.poly([[223, 92], [246, 96], [257, 103], [240, 101]], pal.glow);
+      // Firelight stays in the additive light buffer and only softly warms the underside of the cliff.
+      p.glow(202, 88, 59, pal.glow, 0.15);
+      p.glow(218, 135, 52, pal.ember, 0.1);
     }
-    // Moss threads across the drip lip; water gathers and falls in broken bright streaks.
-    for (const [x, len] of [[91, 5], [119, 9], [151, 5], [178, 8], [205, 6], [234, 10]]) {
-      p.px(x, 88 + Math.floor((x % 13) / 5), pal.rainNear);
-      for (let y = 90; y < 90 + len; y++) if ((y + x) % 3 !== 0) p.dot(x, y, pal.rainNear, 0.7);
+    // Water runs off the broken rock lip in narrow drops.
+    for (const [x, len] of [[118, 7], [145, 10], [174, 6], [196, 9], [226, 6], [245, 8]]) {
+      const edgeY = 88 + Math.round((x - 118) * 0.11);
+      p.dot(x, edgeY, pal.rainNear, 0.75);
+      for (let y = edgeY + 2; y < edgeY + len; y++) if ((y + x) % 3 !== 0) p.dot(x, y, pal.rain, 0.58);
     }
   }
 
@@ -345,6 +384,7 @@ export function createRest(kind, { night = false } = {}) {
       const seed = front ? 800 : 700, phase = (time * (front ? 31 : 25) + rand(seed, i, 1) * 180) % 180;
       const x = (Math.floor(rand(seed, i, 2) * W) - Math.floor(phase * 0.22) + W) % W;
       const y = phase - 16;
+      if (x >= 108 && x <= 245 && y >= 82 && y < 141) continue;
       if (front && y < 126) continue;
       if (!front && y > 136) continue;
       const c = front ? pal.rainNear : pal.rain;
@@ -376,13 +416,13 @@ export function createRest(kind, { night = false } = {}) {
 
   function drawStormPuddles(p) {
     const reflect = flash > 0.08 ? pal.rainNear : pal.puddle;
-    for (const [x, y, width] of [[30, 158, 58], [124, 164, 45], [198, 161, 40], [269, 158, 39]]) {
+    for (const [x, y, width] of [[2, 158, 27], [266, 158, 33], [294, 164, 25]]) {
       p.line(x, y, x + width, y, reflect, flash > 0.08 ? 0.86 : 0.6);
       p.line(x + 5, y + 2, x + width - 8, y + 2, pal.puddle, 0.55);
     }
     // Amber streaks mirror the campfire in the nearest pools.
-    p.line(209, 160, 231, 160, pal.ember, 0.8);
-    p.line(214, 163, 227, 163, pal.glow, 0.52);
+    p.line(274, 159, 290, 159, pal.ember, 0.8);
+    p.line(278, 162, 287, 162, pal.glow, 0.52);
     for (let i = 0; i < 6; i++) {
       const x = (i * 59 + Math.floor(time * 19)) % W, y = 155 + (i % 3) * 7;
       const pulse = 0.45 + 0.4 * Math.sin(time * 4 + i);
@@ -393,7 +433,9 @@ export function createRest(kind, { night = false } = {}) {
 
   function drawLightning(p) {
     if (flash <= 0.04) return;
-    const cx = 65 + Math.floor(rand(253, Math.floor(nextFlash), 2) * 195), base = 48 + Math.floor(rand(253, Math.floor(nextFlash), 3) * 24);
+    const seed = Math.floor(nextFlash), side = rand(253, seed, 4);
+    const cx = side < 0.5 ? 12 + Math.floor(rand(253, seed, 2) * 22) : 275 + Math.floor(rand(253, seed, 2) * 35);
+    const base = 48 + Math.floor(rand(253, seed, 3) * 30);
     const bolt = [[cx, -1], [cx - 5, 15], [cx + 2, 18], [cx - 8, 36], [cx + 1, base], [cx - 2, 27], [cx - 8, 25], [cx, -1]];
     p.polyline(bolt, hex("#c6c8ed"), Math.min(0.9, flash));
     p.polyline([[cx - 3, 16], [cx - 12, 23], [cx - 15, 31], [cx - 22, 37]], hex("#aab5d0"), flash * 0.8);
@@ -415,8 +457,8 @@ export function createRest(kind, { night = false } = {}) {
       if (kind === "storm") {
         if (time >= nextFlash) {
           const age = time - nextFlash;
-          flash = age < 0.48 ? Math.min(1, Math.exp(-age * 6) * (age < 0.12 ? 0.9 : 0.48)) : 0;
-          if (age >= 0.48) nextFlash += (night ? 8 : 6) + rand(254, Math.floor(nextFlash), night ? 1 : 0) * (night ? 7 : 9);
+          flash = age < 0.18 ? Math.min(1, Math.exp(-age * 8) * (age < 0.08 ? 0.95 : 0.68)) : 0;
+          if (age >= 0.18) nextFlash += (night ? 8 : 6) + rand(254, Math.floor(nextFlash), night ? 1 : 0) * (night ? 7 : 9);
         }
       }
       if (ignition > -Infinity && time - ignition >= 1.5) lit = true;

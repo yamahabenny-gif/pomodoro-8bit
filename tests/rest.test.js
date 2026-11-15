@@ -54,6 +54,17 @@ describe("rest scenes", () => {
     }
   });
 
+  it("keeps each lightning illumination brief", () => {
+    const rest = createRest("storm"), base = rest.background().slice(), active = [];
+    for (let t = 0; t < 9; t += 0.01) {
+      rest.update(0.01);
+      if (differs(rest.background(), base)) active.push(Number((t + 0.01).toFixed(2)));
+    }
+    expect(active.length).toBeGreaterThan(0);
+    expect(active.at(-1) - active[0] + 0.01).toBeGreaterThanOrEqual(0.14);
+    expect(active.at(-1) - active[0] + 0.01).toBeLessThanOrEqual(0.2);
+  });
+
   it("keeps the lake night darker than dusk and includes the additional stars", () => {
     const dusk = createRest("lake"), night = createRest("lake", { night: true });
     expect(dusk.background()).not.toEqual(night.background());
