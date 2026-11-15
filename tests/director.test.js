@@ -29,30 +29,37 @@ function makeHarness(phase = "focus") {
   };
   const heroine = createHeroine({ x: 112, y: 150 });
   const sounds = [];
-  const sfx = { play: (name) => sounds.push(name), ambience() {}, notify: (...args) => sounds.push(args) };
+  const ambiences = [];
+  const sfx = { play: (name) => sounds.push(name), ambience: (name) => ambiences.push(name), notify: (...args) => sounds.push(args) };
   const director = createDirector({ stage: { frame: {} }, forest, heroine, timer, sfx });
-  return { director, timer, state, forest, heroine, sounds };
+  return { director, timer, state, forest, heroine, sounds, ambiences };
 }
 
 describe("director", () => {
   it("starts in the matching forest mode and puts a break heroine beside the fire", () => {
     const { forest, heroine } = makeHarness("long");
     expect(forest.mode).toBe("night");
-    expect(heroine.x).toBe(198);
+    expect(heroine.x).toBe(185);
     expect(heroine.y).toBe(150);
     expect(heroine.anim).toBe("sit");
   });
 
-  it("moves to camp and night on timer phase events", () => {
-    const { director, timer, forest, heroine, sounds } = makeHarness();
+  it("alternates storm and lake breaks and lights the fire at seatX", () => {
+    const { director, timer, forest, heroine, sounds, ambiences } = makeHarness();
     timer.changePhase("short");
-    expect(forest.mode).toBe("camp");
     for (let i = 0; i < 40; i++) director.update(0.1);
-    expect(heroine.x).toBe(198);
+    expect(heroine.x).toBe(185);
     expect(heroine.anim).toBe("sit");
+    expect(ambiences).toContain("rain");
+    expect(heroine.x).toBe(185);
+    expect(sounds).toContain("ignite");
     expect(sounds).toContain("phaseBreak");
-    timer.changePhase("long");
-    expect(forest.mode).toBe("night");
+    timer.changePhase("focus");
+    timer.changePhase("short");
+    for (let i = 0; i < 60; i++) director.update(0.1);
+    expect(heroine.x).toBe(42);
+    expect(heroine.anim).toBe("sit");
+    expect(ambiences).toContain("lake");
   });
 
   it("notifies when either break ends and focus resumes", () => {
@@ -108,7 +115,7 @@ describe("director", () => {
       expect(timer.state().phase).toBe("short");
       expect(forest.mode).toBe("camp");
       expect(heroine.anim).toBe("sit");
-      expect(heroine.x).toBe(198);
+      expect(heroine.x).toBe(185);
       clear();
       expect(loadSavedSession(PRESETS, load)).toBeNull();
     } finally {
@@ -129,5 +136,27 @@ describe("director", () => {
     expect(kills.gnome).toBeGreaterThan(0);
     expect(kills.orc, JSON.stringify({ kills, sounds: sounds.slice(-30) })).toBeGreaterThan(0);
     expect(kills.ogre).toBeGreaterThan(0);
+  });
+
+  it("plays level-up feedback and syncs progress on frames", () => {
+    const state = { phase: "focus", running: true, remainingMs: 60_000, totalMs: 60_000, cycle: 1, completedFocus: 0 };
+    const listeners = new Map();
+    let synced = 0, shown = 0;
+    const progress = {
+      on(name, fn) { listeners.set(name, fn); },
+      sync() { synced++; },
+    };
+    const timer = { state: () => ({ ...state }), on() {} };
+    const forest = { campfireX: 228, setMode() {}, scroll() {}, update() {}, drawBack() {}, drawFront() {} };
+    const heroine = createHeroine({ x: 112, y: 150 });
+    const sounds = [];
+    const director = createDirector({ stage: { frame: {} }, forest, heroine, timer, progress,
+      ui: { levelUp(level) { shown = level; } }, sfx: { play(name) { sounds.push(name); }, ambience() {} } });
+    listeners.get("levelup")({ level: 2 });
+    director.update(0.1);
+    expect(synced).toBe(1);
+    expect(shown).toBe(2);
+    expect(sounds).toContain("levelUp");
+    expect(heroine.anim).toBe("levelUp");
   });
 });
