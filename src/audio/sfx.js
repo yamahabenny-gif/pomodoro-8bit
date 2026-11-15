@@ -6,13 +6,16 @@
 //                                WAVE 4 (issue "Sound 2"): + "levelUp" | "thunder" | "ignite" | "block" | "rockHit"
 //   setMuted(bool), muted
 //   ambience(mode)               "forest" | "fire" | "rain" | "lake" | null: soft looping beds, optional.
-//                                "rain" is rain on leaves with a drip crackle; "lake" is lapping water and crickets.
+//                                "rain" is soft rain on leaves, dark and slow, with a few drops; "lake" is lapping
+//                                water and crickets. A bed swells in over AMBIENCE_FADE_IN and dies away over
+//                                AMBIENCE_FADE_OUT seconds when it is replaced or switched off.
 // notify(title, body)            Notification API when the tab is hidden; asks permission once, from a click
 //
 // Additions, backwards compatible: createSfx({ storage, createContext }) injects a fake for tests; the instance
-// also carries notify() and requestPermission(); requestPermission() is exported; renderSound(name) and
-// renderAmbience(mode, seconds) render the same recipes offline (waveform art in docs/img/issue-7 and -29);
-// SOUNDS and AMBIENCES are the data both paths share.
+// also carries notify() and requestPermission(); requestPermission() is exported; renderSound(name),
+// renderAmbience(mode, seconds) and renderBed(bed, seconds) render the same recipes offline (waveform art in
+// docs/img/issue-7, -29 and -58); SOUNDS and AMBIENCES are the data both paths share, plus the exports
+// durationOf, grainTimes and grainSamples and the fade lengths AMBIENCE_FADE_IN / AMBIENCE_FADE_OUT.
 
 const STORAGE_KEY = "pomodoro8bit.muted";
 /** Quiet on purpose: peak of a busy sound sits around -18 dBFS. */
@@ -168,8 +171,9 @@ export const durationOf = (name) => SOUNDS[name]?.dur ?? 0;
 
 // ---- ambience data ---------------------------------------------------------------------------------
 // A bed is a few filtered-noise layers (each with a slow sine on its gain so it breathes) plus an optional
-// grain loop: "drip" is rain crackle, "cricket" is a field of chirps. Both the WebAudio builder and the offline
-// renderer read this, so a change here is audible and visible in one go.
+// grain loop: "drip" is a soft rain drop, "cricket" is a field of chirps. Both the WebAudio builder and the
+// offline renderer read this, so a change here is audible and visible in one go.
+// Keep beds dark and quiet: an ambience plays for a whole break and must never hiss or shout.
 export const AMBIENCES = {
   forest: {
     layers: [
@@ -185,12 +189,17 @@ export const AMBIENCES = {
   },
   rain: {
     layers: [
-      // the sheet of rain, a patter band, and the wet body of the downpour further off
-      { type: "highpass", freq: 1500, q: 0.6, gain: 0.19, lfo: 0.13, depth: 0.04 },
-      { type: "bandpass", freq: 2800, q: 0.9, gain: 0.1, lfo: 0.37, depth: 0.05 },
-      { type: "lowpass", freq: 480, q: 0.5, gain: 0.09, lfo: 0.07, depth: 0.02 },
+      // Rain on leaves behind the window, not a hissing shower. The sheet is low-passed well under 1 kHz, the
+      // body further off sits deep and drifts slowly, a soft mid band is the leaves taking the drops, and the
+      // air above 3 kHz stays a faint breath so nothing sounds stuffed up. No high-pass anywhere: that hiss was
+      // the unpleasant part.
+      { type: "lowpass", freq: 950, q: 0.7, gain: 0.16, lfo: 0.05, depth: 0.05 },
+      { type: "lowpass", freq: 300, q: 0.6, gain: 0.12, lfo: 0.035, depth: 0.03 },
+      { type: "bandpass", freq: 1400, q: 0.8, gain: 0.05, lfo: 0.065, depth: 0.025 },
+      { type: "bandpass", freq: 3000, q: 1.2, gain: 0.01, lfo: 0.045, depth: 0.004 },
     ],
-    grains: { kind: "drip", gain: 0.13, perSecond: 11 },
+    // Two to four drops a second over a 16 s loop, so the ear never finds a repeat.
+    grains: { kind: "drip", gain: 0.15, perSecond: 3, seconds: 16 },
   },
   lake: {
     layers: [
@@ -203,8 +212,13 @@ export const AMBIENCES = {
   },
 };
 export const AMBIENCE_MODES = Object.keys(AMBIENCES);
+/** Fade-in and fade-out of a bed, in seconds: long enough to never startle on a phase change. */
+export const AMBIENCE_FADE_IN = 2;
+export const AMBIENCE_FADE_OUT = 1.5;
 export const GRAIN_SECONDS = 3;
 const GRAIN_SEED = { drip: 0x5a17, cricket: 0x2c09 };
+/** How long the grain loop of a bed is; rain wants a long one so the drops never repeat audibly. */
+const grainSeconds = (grain) => grain.seconds ?? GRAIN_SECONDS;
 
 // ---- offline preview ------------------------------------------------------------------------------
 // The same recipes as plain samples, so tools and pictures can look at a sound without WebAudio.
@@ -217,7 +231,7 @@ export function renderSound(name, rate = 8000) {
   for (const v of sound.voices) {
     const start = Math.round((v.t ?? 0) * rate), n = Math.ceil(v.dur * rate);
     const attack = Math.min(v.attack ?? 0.004, v.dur * 0.5);
-    const state = { lp: 0, mid: 0, hp: 0 };
+    const state = {}; // one biquad per voice/layer
     let phase = 0;
     for (let i = 0; i < n; i++) {
       const u = i / rate, k = Math.min(1, u / v.dur), env = envelopeAt(u, v, attack) * sound.level;
@@ -238,15 +252,23 @@ export function renderSound(name, rate = 8000) {
 
 /**
  * Ambient beds as plain samples: layers of filtered noise with their slow gain LFO, plus the grain loop
- * (rain drips, crickets). Same data the WebAudio builder uses, so a snapshot shows the bed you hear.
+ * (rain drops, crickets). Same data the WebAudio builder uses, so a snapshot shows the bed you hear.
  */
 export function renderAmbience(mode, seconds = 2, rate = 8000) {
   const bed = AMBIENCES[mode];
   if (!bed) return new Float32Array(0);
+  return renderBed(bed, seconds, rate);
+}
+
+/**
+ * Render one bed object (one entry of AMBIENCES, or a recipe from an old issue) offline. Exported so the
+ * before/after pictures in docs/img/issue-58 can put an old recipe through the very same code.
+ */
+export function renderBed(bed, seconds = 2, rate = 8000) {
   const n = Math.ceil(seconds * rate), out = new Float32Array(n);
   const rand = mulberry32(0x2f19);
   for (const layer of bed.layers) {
-    const state = { lp: 0, mid: 0, hp: 0 };
+    const state = {}; // one biquad per voice/layer
     for (let i = 0; i < n; i++) {
       const s = filterSample(rand() * 2 - 1, layer, 0.5, rate, state);
       const lfo = layer.lfo ? Math.sin((i / rate) * Math.PI * 2 * layer.lfo) : 0;
@@ -254,23 +276,24 @@ export function renderAmbience(mode, seconds = 2, rate = 8000) {
     }
   }
   if (bed.grains) {
-    const grains = grainSamples(bed.grains, GRAIN_SECONDS, rate);
+    const grains = grainSamples(bed.grains, grainSeconds(bed.grains), rate);
     for (let i = 0; i < n; i++) out[i] += grains[i % grains.length] * bed.grains.gain;
   }
   return out;
 }
 
 /** When the grains of a loop start, in seconds. Shared by the synth and the picture. */
-export function grainTimes(grain, seconds = GRAIN_SECONDS) {
+export function grainTimes(grain, seconds = grainSeconds(grain)) {
   const rand = mulberry32(GRAIN_SEED[grain.kind] ?? 0x1234);
   const count = Math.max(1, Math.round(seconds * (grain.perSecond ?? 4)));
   const times = [];
-  for (let g = 0; g < count; g++) times.push(((g + rand() * 0.6) / count) * seconds);
+  // One drop per slot, placed anywhere inside it: even at 3/s the gaps stay irregular.
+  for (let g = 0; g < count; g++) times.push(((g + rand()) / count) * seconds);
   return times;
 }
 
-/** The looping grain loop: sparse drips or cricket chirps, deterministic per kind. */
-export function grainSamples(grain, seconds = GRAIN_SECONDS, rate = 8000) {
+/** The looping grain loop: sparse drops or cricket chirps, deterministic per kind. */
+export function grainSamples(grain, seconds = grainSeconds(grain), rate = 8000) {
   const out = new Float32Array(Math.ceil(seconds * rate));
   const rand = mulberry32((GRAIN_SEED[grain.kind] ?? 0x1234) ^ 0x9e37);
   const times = grainTimes(grain, seconds);
@@ -286,12 +309,15 @@ export function grainSamples(grain, seconds = GRAIN_SECONDS, rate = 8000) {
         }
       }
     } else {
-      // a drip: a tiny high ping with a click of noise on its front
-      const freq = 1600 + rand() * 2400, len = Math.round(rate * 0.045), k = 0.6 + rand() * 0.4;
+      // A drop on a leaf: a soft sine that slides down a little, windowed at both ends instead of clicked on.
+      // It stays inside the rain's own band (no ping above 1.5 kHz), which is what made the old drips sharp.
+      const freq = 620 + rand() * 520, fall = 0.55 + rand() * 0.25;
+      const len = Math.round(rate * 0.075), k = 0.7 + rand() * 0.3;
       for (let j = 0; j < len && at + j < out.length; j++) {
-        const env = Math.exp(-j / (rate * 0.009));
-        const click = j < rate * 0.004 ? (rand() * 2 - 1) * 0.5 : 0;
-        out[at + j] += (Math.sin((j / rate) * Math.PI * 2 * freq) * 0.55 + click) * env * k;
+        const u = j / len;
+        const f = freq * (1 - (1 - fall) * u);
+        const env = Math.sin(u * Math.PI) * Math.exp(-u * 2.2);
+        out[at + j] += Math.sin((j / rate) * Math.PI * 2 * f) * env * k * 0.5;
       }
     }
   }
@@ -314,16 +340,44 @@ function waveSample(wave, p) {
 
 function filterSample(x, filter, k, rate, state) {
   const type = filter?.type ?? "bandpass";
-  const from = filter?.from ?? 1200, to = filter?.to ?? from;
-  const cut = from * Math.pow(to / from, k);
-  const a = 1 - Math.exp((-2 * Math.PI * cut) / rate);
-  state.lp += a * (x - state.lp);
-  if (type === "lowpass") return state.lp;
-  if (type === "highpass") return x - state.lp;
-  // band: low-pass twice, then high-pass once, around the moving cutoff. Crude, but enough to see.
-  state.mid += a * (state.lp - state.mid);
-  state.hp += a * (state.mid - state.hp);
-  return state.mid - state.hp;
+  const from = filter?.from ?? filter?.freq ?? 1200, to = filter?.to ?? from;
+  const cut = Math.min(rate * 0.45, Math.max(20, from * Math.pow(to / from, k)));
+  const q = filter?.q ?? 1;
+  // RBJ biquad, the same family as the browser's BiquadFilter: the picture must show what the ear gets.
+  if (!state.ready || state.cut !== cut || state.type !== type || state.q !== q) {
+    const w0 = (2 * Math.PI * cut) / rate, cos = Math.cos(w0), alpha = Math.sin(w0) / (2 * q);
+    const a0 = 1 + alpha;
+    let b0, b1, b2;
+    if (type === "lowpass") {
+      b0 = (1 - cos) / 2;
+      b1 = 1 - cos;
+      b2 = b0;
+    } else if (type === "highpass") {
+      b0 = (1 + cos) / 2;
+      b1 = -(1 + cos);
+      b2 = b0;
+    } else {
+      // constant peak gain: flat through the band instead of a loud bump
+      b0 = alpha;
+      b1 = 0;
+      b2 = -alpha;
+    }
+    state.b0 = b0 / a0;
+    state.b1 = b1 / a0;
+    state.b2 = b2 / a0;
+    state.a1 = (-2 * cos) / a0;
+    state.a2 = (1 - alpha) / a0;
+    state.cut = cut;
+    state.type = type;
+    state.q = q;
+    state.ready = true;
+  }
+  const y = state.b0 * x + state.b1 * (state.x1 ?? 0) + state.b2 * (state.x2 ?? 0) - state.a1 * (state.y1 ?? 0) - state.a2 * (state.y2 ?? 0);
+  state.x2 = state.x1 ?? 0;
+  state.x1 = x;
+  state.y2 = state.y1 ?? 0;
+  state.y1 = y;
+  return y;
 }
 
 function mulberry32(seed) {
@@ -427,7 +481,14 @@ function scheduleNoise(ctx, dest, v, t0, level) {
 function buildAmbience(ctx, dest, mode) {
   const bed = AMBIENCES[mode];
   const sources = [], nodes = [];
-  if (!bed) return { sources, nodes };
+  if (!bed) return { sources, nodes, bus: null };
+  const now = ctx.currentTime ?? 0;
+  // Everything hangs off one bus so the whole bed swells in together and can be faded out as a whole.
+  const bus = ctx.createGain();
+  bus.gain.setValueAtTime(MIN_GAIN, now);
+  bus.gain.linearRampToValueAtTime(1, now + AMBIENCE_FADE_IN);
+  bus.connect(dest);
+  nodes.push(bus);
   for (const layer of bed.layers) {
     const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gainNode = ctx.createGain();
     src.buffer = noiseBuffer(ctx);
@@ -435,11 +496,11 @@ function buildAmbience(ctx, dest, mode) {
     filter.type = layer.type;
     filter.frequency.value = layer.freq;
     filter.Q.value = layer.q;
-    gainNode.gain.value = 0;
-    src.connect(filter).connect(gainNode).connect(dest);
+    gainNode.gain.value = layer.gain;
+    src.connect(filter).connect(gainNode).connect(bus);
     src.start();
-    gainNode.gain.setTargetAtTime(layer.gain, ctx.currentTime, 1.5);
     if (layer.lfo) {
+      // Very slow sine on the layer gain: the bed breathes instead of sitting there like a hiss.
       const osc = ctx.createOscillator(), amount = ctx.createGain();
       osc.type = "sine";
       osc.frequency.value = layer.lfo;
@@ -453,40 +514,59 @@ function buildAmbience(ctx, dest, mode) {
     nodes.push(filter, gainNode);
   }
   if (bed.grains) {
-    // Drips and crickets: a looping buffer of grains, faded in like the layers.
-    const rate = ctx.sampleRate || 44100, data = grainSamples(bed.grains, GRAIN_SECONDS, rate);
+    // Drops and crickets: a looping buffer of grains, riding the same fade as the layers.
+    const rate = ctx.sampleRate || 44100, data = grainSamples(bed.grains, grainSeconds(bed.grains), rate);
     const src = ctx.createBufferSource(), grainGain = ctx.createGain();
     const buffer = ctx.createBuffer(1, data.length, rate);
     buffer.getChannelData(0).set(data);
     src.buffer = buffer;
     src.loop = true;
-    grainGain.gain.value = 0;
-    src.connect(grainGain).connect(dest);
+    grainGain.gain.value = bed.grains.gain;
+    src.connect(grainGain).connect(bus);
     src.start();
-    grainGain.gain.setTargetAtTime(bed.grains.gain, ctx.currentTime, 1.5);
     sources.push(src);
     nodes.push(grainGain);
   }
-  return { sources, nodes };
+  return { sources, nodes, bus };
 }
 
-function stopAmbience(handle) {
+/** Fade the bed out over AMBIENCE_FADE_OUT, then pull the graph apart once the tail is gone. */
+function stopAmbience(handle, ctx) {
   if (!handle) return;
+  const now = ctx?.currentTime ?? 0;
+  const tail = handle.bus ? AMBIENCE_FADE_OUT : 0;
+  if (handle.bus) {
+    const param = handle.bus.gain;
+    try {
+      if (typeof param.cancelScheduledValues === "function") param.cancelScheduledValues(now);
+      param.setValueAtTime(Math.max(MIN_GAIN, param.value ?? 1), now);
+      param.linearRampToValueAtTime(MIN_GAIN, now + tail);
+    } catch {
+      // a browser refusing the ramp: the stop() below still ends it
+    }
+  }
   for (const s of handle.sources) {
     try {
-      s.stop();
+      tail ? s.stop(now + tail) : s.stop();
     } catch {
       // already stopped
     }
-    try {
-      s.disconnect();
-    } catch {}
   }
-  for (const n of handle.nodes) {
-    try {
-      n.disconnect();
-    } catch {}
-  }
+  const teardown = () => {
+    for (const s of handle.sources) {
+      try {
+        s.disconnect();
+      } catch {}
+    }
+    for (const n of handle.nodes) {
+      try {
+        n.disconnect();
+      } catch {}
+    }
+  };
+  // Disconnecting now would cut the tail off, so the links go once it has played out.
+  if (tail > 0 && typeof setTimeout === "function") setTimeout(teardown, (tail + 0.1) * 1000);
+  else teardown();
 }
 
 /**
@@ -555,7 +635,7 @@ export function createSfx(options = {}) {
 
   function setAmbience(next) {
     if (ambienceHandle) {
-      stopAmbience(ambienceHandle);
+      stopAmbience(ambienceHandle, ctx);
       ambienceHandle = null;
       ambienceMode = null;
     }
