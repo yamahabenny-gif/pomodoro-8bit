@@ -9,18 +9,21 @@
 //                                WAVE 4 (issue "Level-Up"): progress = createProgress().state(); an XP bar
 //                                "Lv 3" + fill + "12/25 min", and levelUp(level) shows a short LEVEL UP! banner.
 //                                The kill counter also shows "golem" once it exists.
+//                                The XP bar stays hidden while progress is missing (older directors).
+//   levelUp(level)               WAVE 4: flash the LEVEL UP! banner for about 2 s
 //   destroy()                    remove listeners (convenience, the director may never need it)
 // Keyboard: Space pause/resume, S skip, M mute, Esc back to menu (with confirm).
 //
-// Pure helpers exported for tests: formatTime, phaseLabel, presetLine, cycleMarks.
+// Pure helpers exported for tests: formatTime, phaseLabel, presetLine, cycleMarks, xpLabel, killKinds.
 
 import { PRESETS } from "../config/presets.js";
 
 const PHASE_LABELS = { focus: "Kampf", short: "Rast", long: "Lange Rast" };
-const KINDS = ["gnome", "orc", "ogre"];
-const ENEMY_LABELS = { gnome: "Gnom", orc: "Ork", ogre: "Oger" };
+const KINDS = ["gnome", "orc", "ogre", "golem"];
+const ENEMY_LABELS = { gnome: "Gnom", orc: "Ork", ogre: "Oger", golem: "Golem" };
 const APP_TITLE = "Pomodoro 8-Bit";
 const HINT = "Leertaste Pause · S überspringen · M Ton · Esc Menü";
+const LEVELUP_MS = 2000;
 
 /** mm:ss, seconds rounded up so a running timer never shows 00:00 early. */
 export function formatTime(ms) {
@@ -54,6 +57,20 @@ export function cycleMarks(completedFocus, longBreakEvery, phase = "focus") {
       ? total
       : Math.min(total, Math.max(0, Math.floor(Number(completedFocus) || 0)) % total);
   return Array.from({ length: total }, (_, i) => i < done);
+}
+
+/** "12/25 min" for the XP bar; minutes are floored so the label never promises one more than you have. */
+export function xpLabel(progress) {
+  const xp = Number(progress?.xp);
+  const need = Number(progress?.need);
+  if (!Number.isFinite(xp) || !Number.isFinite(need) || need <= 0) return "";
+  return `${Math.max(0, Math.floor(xp))}/${Math.round(need)} min`;
+}
+
+/** Kinds worth a kill-counter slot: the old three always, the golem only once stats know it. */
+export function killKinds(kills) {
+  const counts = kills && typeof kills === "object" ? kills : {};
+  return KINDS.filter((kind) => kind !== "golem" || Number.isFinite(Number(counts.golem)));
 }
 
 // Tiny 10 x 10 sprites for the kill counter, one char per pixel, "." is transparent.
@@ -101,6 +118,21 @@ const ENEMY_ART = {
       ".oooooooo.",
       "o.oooooo.o",
       "...oooo...",
+    ],
+  },
+  golem: {
+    palette: { s: "#8f8a9b", d: "#5c5668", h: "#b8b2c4", k: "#17121f", o: "#ff8a2b" },
+    rows: [
+      "..ssssss..",
+      ".sshssshs.",
+      "ssssdsssss",
+      "ssdssssdss",
+      "ssoossooss",
+      "ssssssssss",
+      "ssdkkkkdss",
+      ".ssssssss.",
+      ".sdsdsdsd.",
+      "..ssssss..",
     ],
   },
 };
@@ -260,8 +292,19 @@ export function createUI(root, handlers = {}) {
           <span class="clock" role="timer" data-el="clock">00:00</span>
           <span class="phase-tag" data-el="phase" data-phase="focus" aria-live="polite">Kampf</span>
         </div>
+        <div class="hud-panel hud-xp" data-el="xp" hidden>
+          <span class="xp-level" data-el="xp-level">Lv 1</span>
+          <span class="xp-bar" data-el="xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Erfahrung">
+            <span class="xp-fill" data-el="xp-fill"></span>
+          </span>
+          <span class="xp-label" data-el="xp-label">0/15 min</span>
+        </div>
         <div class="pips" data-el="pips" role="img" aria-label="Zyklus"></div>
         <p class="hud-hint">${HINT}</p>
+      </div>
+      <div class="levelup" data-el="levelup" role="status" aria-live="polite">
+        <span class="levelup-title">LEVEL UP!</span>
+        <span class="levelup-level" data-el="levelup-level">Lv 2</span>
       </div>
       <div class="hud-panel hud-kills" data-el="kills" role="group" aria-label="Besiegte Gegner"></div>
       <div class="hud-actions">
@@ -297,6 +340,13 @@ export function createUI(root, handlers = {}) {
   const phaseEl = root.querySelector('[data-el="phase"]');
   const pipsEl = root.querySelector('[data-el="pips"]');
   const killsEl = root.querySelector('[data-el="kills"]');
+  const xpEl = root.querySelector('[data-el="xp"]');
+  const xpLevelEl = root.querySelector('[data-el="xp-level"]');
+  const xpBarEl = root.querySelector('[data-el="xp-bar"]');
+  const xpFillEl = root.querySelector('[data-el="xp-fill"]');
+  const xpLabelEl = root.querySelector('[data-el="xp-label"]');
+  const levelupEl = root.querySelector('[data-el="levelup"]');
+  const levelupLevelEl = root.querySelector('[data-el="levelup-level"]');
   const pauseBtn = root.querySelector('[data-el="pause"]');
   const pauseIcon = root.querySelector('[data-el="pause-icon"]');
   const muteBtn = root.querySelector('[data-el="mute"]');
@@ -308,7 +358,6 @@ export function createUI(root, handlers = {}) {
 
   /** @type {HTMLButtonElement[]} */
   const cards = [];
-  const killCounts = {};
   cardsEl.replaceChildren();
 
   presets.forEach((preset, index) => {
@@ -333,14 +382,23 @@ export function createUI(root, handlers = {}) {
   });
 
   killsEl.replaceChildren();
-  for (const kind of KINDS) {
+  const killRows = {};
+  const killCounts = {};
+
+  function ensureKillRow(kind) {
+    if (killRows[kind]) return killRows[kind];
     const row = document.createElement("div");
     row.className = "kill";
     row.dataset.kind = kind;
     row.innerHTML = `<span class="kill-icon">${enemyIcon(kind)}</span><span class="kill-name">${ENEMY_LABELS[kind]}</span><span class="kill-count" data-el="kill-${kind}">0</span>`;
     killsEl.append(row);
+    killRows[kind] = row;
     killCounts[kind] = row.querySelector(".kill-count");
+    return row;
   }
+
+  // The classic three are always there; the golem joins the row the first time the stats know it.
+  for (const kind of killKinds(null)) ensureKillRow(kind);
 
   let view = "menu";
   let selectedIndex = 0;
@@ -348,7 +406,8 @@ export function createUI(root, handlers = {}) {
   let muted = false;
   let confirmOpen = false;
   let running = true;
-  let last = { time: "", phase: "", title: "", pips: null, running: null };
+  let levelupTimer = 0;
+  let last = { time: "", phase: "", title: "", pips: null, running: null, xp: "" };
 
   function setView(next) {
     view = next;
@@ -422,7 +481,7 @@ export function createUI(root, handlers = {}) {
     last.pips = null; // next render() repaints the pips for this preset
   }
 
-  function render(timerState, stats) {
+  function render(timerState, stats, progress) {
     const state = timerState || {};
     const phase = state.phase ?? "focus";
     const label = phaseLabel(phase);
@@ -453,17 +512,58 @@ export function createUI(root, handlers = {}) {
     }
 
     const kills = stats?.kills ?? {};
+    const visibleKills = killKinds(kills);
+    for (const kind of visibleKills) ensureKillRow(kind);
     for (const kind of KINDS) {
+      if (!killRows[kind]) continue;
+      killRows[kind].hidden = !visibleKills.includes(kind);
       const count = String(Math.max(0, Math.floor(Number(kills[kind]) || 0)));
-      if (killCounts[kind] && killCounts[kind].textContent !== count) {
-        killCounts[kind].textContent = count;
-      }
+      if (killCounts[kind].textContent !== count) killCounts[kind].textContent = count;
     }
+
+    renderXp(progress);
 
     if (Boolean(state.running) !== last.running) {
       paintRunning(Boolean(state.running));
       last.running = Boolean(state.running);
     }
+  }
+
+  function renderXp(progress) {
+    const level = Number(progress?.level);
+    const hasProgress = Number.isFinite(level) && level >= 1;
+    if (xpEl.hidden === hasProgress) xpEl.hidden = !hasProgress;
+    if (!hasProgress) return;
+    const need = Number(progress.need) || 0;
+    const ratio = Number.isFinite(Number(progress.ratio))
+      ? Math.min(1, Math.max(0, Number(progress.ratio)))
+      : need > 0
+        ? Math.min(1, Math.max(0, Number(progress.xp) / need))
+        : 0;
+    const label = xpLabel(progress);
+    const key = `${Math.floor(level)}|${Math.round(ratio * 200)}|${label}`;
+    if (key === last.xp) return;
+    last.xp = key;
+    xpLevelEl.textContent = `Lv ${Math.floor(level)}`;
+    xpFillEl.style.width = `${(ratio * 100).toFixed(2)}%`;
+    xpLabelEl.textContent = label;
+    const percent = Math.round(ratio * 100);
+    xpBarEl.setAttribute("aria-valuenow", String(percent));
+    xpBarEl.setAttribute(
+      "aria-label",
+      `Erfahrung: Level ${Math.floor(level)}, ${label.replace(" min", " Minuten")}`,
+    );
+  }
+
+  function levelUp(level) {
+    const reached = Number(level);
+    levelupLevelEl.textContent = `Level ${Number.isFinite(reached) ? Math.floor(reached) : ""}`.trim();
+    levelupEl.classList.remove("is-open");
+    // Restart the blink animation even when a second level lands while the banner is still up.
+    void levelupEl.offsetWidth;
+    levelupEl.classList.add("is-open");
+    clearTimeout(levelupTimer);
+    levelupTimer = setTimeout(() => levelupEl.classList.remove("is-open"), LEVELUP_MS);
   }
 
   function togglePause() {
@@ -609,6 +709,7 @@ export function createUI(root, handlers = {}) {
     showMenu,
     showHud,
     render,
+    levelUp,
     get preset() {
       return currentPreset;
     },
@@ -619,6 +720,7 @@ export function createUI(root, handlers = {}) {
       return muted;
     },
     destroy() {
+      clearTimeout(levelupTimer);
       document.removeEventListener("keydown", onKeyDown);
       cardsEl.removeEventListener("keydown", onCardKey);
       root.classList.remove("pom-ui");
