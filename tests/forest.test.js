@@ -60,10 +60,19 @@ describe("forest scene", () => {
     expect(forest.mode).toBe("fight");
   });
 
-  it("tiles the parallax: a whole far-layer period lands on the same background", () => {
+  it("keeps the journey deterministic and wraps after all three sections", () => {
     const forest = createForest();
     const before = forest.background().slice();
-    forest.scroll(3000); // 3000 px * 0.16 = 480 px = one far-layer period
+    forest.scroll(3000); // One far-layer period advances to the glade.
+    expect(forest.background()).not.toEqual(before);
+    const glade = forest.background().slice();
+    expect(createForest().background()).toEqual(before);
+    const sameGlade = createForest();
+    sameGlade.scroll(3000);
+    expect(sameGlade.background()).toEqual(glade);
+    forest.scroll(3000); // The bridge is the third section.
+    expect(forest.background()).not.toEqual(glade);
+    forest.scroll(3000); // The complete 1,440 px journey repeats seamlessly.
     expect(forest.background()).toEqual(before);
     forest.scroll(120);
     expect(forest.background()).not.toEqual(before);
