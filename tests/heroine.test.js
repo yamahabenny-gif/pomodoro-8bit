@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFrame, hex } from "pixelfx/core/index.js";
 import { createHeroine, heroinePose, swordPose } from "../src/game/heroine/heroine.js";
 
-const ANIMS = ["idle", "walk", "attack1", "attack2", "attack3", "hurt", "victory", "sitDown", "sit", "standUp"];
+const ANIMS = ["idle", "walk", "attack1", "attack2", "attack3", "hurt", "victory", "sitDown", "sit", "standUp", "lightFire", "levelUp"];
 
 describe("heroine", () => {
   it.each(ANIMS)("draws %s without throwing", (name) => {
@@ -35,6 +35,26 @@ describe("heroine", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
+  it("lights the fire at the spark and returns to sit once", () => {
+    const onHit = vi.fn(), onDone = vi.fn(), heroine = createHeroine();
+    heroine.play("lightFire", { onHit, onDone });
+    for (let i = 0; i < 20; i++) heroine.update(0.1);
+    expect(onHit).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(heroine.anim).toBe("sit");
+    heroine.update(1);
+    expect(onHit).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes the level-up pose after its glow", () => {
+    const onDone = vi.fn(), heroine = createHeroine();
+    heroine.play("levelUp", { onDone });
+    for (let i = 0; i < 16; i++) heroine.update(0.1);
+    expect(heroine.anim).toBe("idle");
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
   it("transitions sitDown to sit and calls onDone once", () => {
     const onDone = vi.fn(), heroine = createHeroine();
     heroine.play("sitDown", { onDone });
@@ -60,11 +80,11 @@ describe("heroine", () => {
     heroine.draw(frame);
     const pixels = Array.from(frame.color);
     expect(pixels.filter((pixel) => pixel === (hex("#754a35") >>> 0)).length).toBeGreaterThan(0);
-    expect(pixels.filter((pixel) => pixel === (hex("#d8e6dc") >>> 0)).length).toBeGreaterThan(0);
+    expect(pixels.filter((pixel) => pixel === (hex("#b8d1dc") >>> 0)).length).toBeGreaterThan(0);
   });
 
   it("keeps the sword grip within one pixel of the hand at every animation sample", () => {
-    const durations = { attack1: 0.68, attack2: 0.72, attack3: 0.84, hurt: 0.38, victory: 0.9, sitDown: 0.65, standUp: 0.62 };
+    const durations = { attack1: 0.68, attack2: 0.72, attack3: 0.84, hurt: 0.38, victory: 0.9, sitDown: 0.65, standUp: 0.62, lightFire: 1.25, levelUp: 1.2 };
     for (const name of ANIMS) for (const sample of [0, 0.25, 0.5, 0.75, 1]) {
       const elapsed = (durations[name] ?? 0.34) * sample;
       const pose = heroinePose(name, elapsed);
@@ -81,5 +101,9 @@ describe("heroine", () => {
   it("uses four distinct held drawings in the walk cycle", () => {
     const frames = [0, 1, 2, 3].map((step) => heroinePose("walk", step / 12).rows.join(""));
     expect(new Set(frames).size).toBe(4);
+  });
+
+  it("updates reach for the longer knight sword", () => {
+    expect(createHeroine().reach).toBe(24);
   });
 });
