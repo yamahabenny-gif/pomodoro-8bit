@@ -6,13 +6,13 @@
 // stay as a fallback.
 //
 // createForest() returns:
-//   setMode(mode, { instant })   "fight" (day/afternoon, falling leaves) | "camp" (dusk, campfire lit,
+//   setMode(mode, { instant })   "fight" (dusk, drifting fog) | "camp" (dusk, campfire lit,
 //                                fireflies) | "night" (long break: stars, bigger fire). Crossfades ~1.5 s.
 //   scroll(px)                   advance parallax (the heroine walks between fights)
 //   update(dt)
 //   background()                 Uint32Array(W*H) sky + far layers, the composite() background
 //   drawBack(frame)              mid layers + campfire back layer: behind characters
-//   drawFront(frame)             foreground grass/leaves + fire front layer: in front of characters
+//   drawFront(frame)             foreground grass + fire front layer: in front of characters
 //   campfireX                    where the heroine sits in "camp"/"night"
 //
 // Everything time-based runs off update(dt); no setTimeout. The sky, far treeline and ground are baked once
@@ -23,8 +23,6 @@ import {
 } from "../../../vendor/pixelfx/src/core/index.js";
 import * as campfire from "../../../vendor/pixelfx/src/fx/fire/campfire.js";
 import * as fireflies from "../../../vendor/pixelfx/src/fx/weather/fireflies.js";
-import * as fallingLeaves from "../../../vendor/pixelfx/src/fx/weather/falling-leaves.js";
-import * as godRays from "../../../vendor/pixelfx/src/fx/weather/god-rays.js";
 
 // Same numbers as src/engine/stage.js. Duplicated so Node tools (tools/snap.mjs) can import this module
 // without the Vite alias that stage.js uses.
@@ -114,16 +112,17 @@ for (const g of Object.values(GROUND)) for (const [k, v] of Object.entries(g)) g
 const CLEARING_X = CAMPFIRE_X;
 
 // ---- layer geometry, same in every mode. Seeds are fixed, so a tree keeps its shape while it scrolls.
-const MID_TREES = Array.from({ length: 4 }, (_, i) => {
+const MID_TREES = Array.from({ length: 12 }, (_, i) => {
   const R = (k) => rand(501, i, k);
   return {
-    x: (i + 0.5) * (MID_PERIOD / 4) + (R(1) - 0.5) * 66,
-    h: 98 + R(2) * 74,
-    w: 7 + R(3) * 5,
-    lean: (R(4) - 0.5) * 16,
+    x: (i + 0.5) * (MID_PERIOD / 12) + (R(1) - 0.5) * 18,
+    h: 88 + R(2) * 70,
+    w: 2.5 + R(3) * 3.6,
+    lean: (R(4) - 0.5) * 24,
+    curve: (R(8) - 0.5) * 16,
     moss: R(5) < 0.6,
     branchSide: R(6) < 0.5 ? -1 : 1,
-    branchAt: 0.62 + R(7) * 0.26,
+    branchAt: 0.35 + R(7) * 0.42,
     seed: 900 + i,
   };
 });
@@ -136,13 +135,13 @@ const MID_SAPLINGS = Array.from({ length: 4 }, (_, i) => {
     seed: 950 + i,
   };
 });
-const CANOPY = Array.from({ length: 10 }, (_, i) => {
+const CANOPY = Array.from({ length: 14 }, (_, i) => {
   const R = (k) => rand(521, i, k);
   return {
-    x: (i + 0.5) * (MID_PERIOD / 10) + (R(1) - 0.5) * 22,
-    y: -12 + R(2) * 9,
-    r: 15 + R(3) * 13,
-    lobes: Array.from({ length: 4 }, (_, j) => ({ dx: (rand(522, i, j) - 0.5) * 34, dy: 6 + rand(523, i, j) * 17, r: 7 + rand(524, i, j) * 8 })),
+    x: (i + 0.5) * (MID_PERIOD / 14) + (R(1) - 0.5) * 16,
+    y: -12 + R(2) * 11,
+    r: 9 + R(3) * 9,
+    lobes: Array.from({ length: 2 + Math.floor(R(4) * 3) }, (_, j) => ({ dx: (rand(522, i, j) - 0.5) * 34, dy: 6 + rand(523, i, j) * 16, r: 5 + rand(524, i, j) * 7 })),
   };
 });
 const NEAR = ["bush", "bush", "fern", "rock", "bush", "mushrooms", "log", "fern"].map((type, i) => {
@@ -229,11 +228,6 @@ export function createForest() {
     palette: ["#3d2818", "#8d4d25", "#d58031", "#f1b64d", "#ffe18a", "#fff4c0"],
     grass: ["#090b13", "#141824", "#20232f", "#2a3038", "#3a413c", "#555340"],
   });
-  const leaves = createFx(fallingLeaves, { x: W / 2, y: GROUND_Y, seed: 8 });
-  const rays = createFx(godRays, {
-    x: W / 2, y: GROUND_Y, seed: 3, light: 0.45,
-    palette: ["#35334f", "#514761", "#856053", "#c2764b", "#e99b59", "#f1c17a", "#ffdfad"],
-  });
 
   // ---- baked sky + ground, one buffer per mode
   function bakeSky(m) {
@@ -255,7 +249,7 @@ export function createForest() {
       }
     }
     // low sun / sunset glow, dithered so it stays in the palette's steps
-    if (m === "fight") glow(out, W / 2, 96, 122, hex("#f2a05a"), 0.35);
+    if (m === "fight") glow(out, W / 2, 96, 122, hex("#f2a05a"), 0.14);
     if (m === "camp") {
       glow(out, CAMPFIRE_X + 34, GROUND_Y + 2, 96, hex("#f0a05a"), 0.7);
       disc(out, 276, GROUND_Y - 12, 7, (d) => (d > 0.82 ? hex("#e8a05a") : hex("#ffd894")));
@@ -348,13 +342,12 @@ export function createForest() {
         p.circle(x + dx + r * 0.5, y + 1, r * 0.55, c);
       }
     }
-    for (let i = 0; i < 12; i++) {
-      const x = (i + 0.5) * (FAR_PERIOD / 12) + (R(i, 11) - 0.5) * 34;
-      const h = 30 + R(i, 12) * 48, c = pal.far[Math.floor(R(i, 13) * pal.far.length)];
-      const conifer = R(i, 14) < 0.72;
+    for (let i = 0; i < 28; i++) {
+      const x = (i + 0.5) * (FAR_PERIOD / 28) + (R(i, 11) - 0.5) * 12;
+      const h = 44 + R(i, 12) * 66, c = pal.far[Math.floor(R(i, 13) * pal.far.length)];
+      const width = 1.2 + R(i, 14) * 2.2;
       for (const dx of [-FAR_PERIOD, 0, FAR_PERIOD]) {
-        if (conifer) farConifer(p, x + dx, GROUND_Y, h, 9 + R(i, 15) * 10, c);
-        else farTree(p, x + dx, GROUND_Y, h, 18 + R(i, 16) * 12, c);
+        drawFarSilhouette(p, x + dx, GROUND_Y, h, width, c, R(i, 15) * 8 - 4);
       }
     }
     farCache[m] = f;
@@ -397,8 +390,19 @@ export function createForest() {
     if (journeyCache) return journeyCache;
     const f = createFrame(JOURNEY_PERIOD, H), p = painterFor(f);
     p.place(0, 0);
-    const ink = hex("#17121f"), water = [hex("#20263c"), hex("#293149"), hex("#38445a")];
+    const ink = hex("#17121f"), water = [hex("#111626"), hex("#222b40"), hex("#30394d")];
     const moss = hex("#526341"), mossLight = hex("#71804c"), bark = hex("#56392c");
+    drawAncientTree(p, 24, PAL.fight, 3301);
+    drawAncientTree(p, 748, PAL.fight, 3302);
+    // A fallen trunk and its broken limbs cross the forest floor.
+    p.ellipse(260, 151, 42, 3, ink, 0.8);
+    p.poly([[220, 151], [224, 146], [233, 144], [284, 145], [298, 148], [301, 151]], ink);
+    p.poly([[225, 149], [229, 147], [236, 146], [283, 147], [294, 149], [296, 150]], hex("#4a3028"));
+    p.line(232, 147, 286, 148, hex("#88563a"));
+    p.line(245, 146, 238, 139, ink); p.line(238, 139, 233, 138, bark);
+    p.line(271, 146, 279, 140, ink); p.line(279, 140, 285, 139, bark);
+    p.ellipse(224, 148, 4, 3, hex("#9b6640"), 0.9);
+    p.ellipse(222, 148, 2, 2, hex("#402a27"), 1);
     const stumpX = FAR_PERIOD + 210;
     // The middle stretch opens into a mossy glade with a stump, fungi and a low fallen log.
     p.ellipse(stumpX + 28, GROUND_Y + 1, 25, 3, ink, 0.7);
@@ -408,38 +412,65 @@ export function createForest() {
     p.line(stumpX + 21, 142, stumpX + 35, 142, hex("#b58a54"));
     p.line(stumpX - 35, 151, stumpX + 3, 149, ink);
     p.line(stumpX - 34, 149, stumpX + 2, 147, hex("#563b2a"));
-    for (let i = 0; i < 5; i++) {
-      const x = stumpX - 18 + i * 9;
-      p.line(x, 149, x + (i % 2 ? 2 : -2), 145 + (i % 3), hex("#30412b"));
-      p.ellipse(x + (i % 2 ? 2 : -2), 145 + (i % 3), 3.5, 1.6, ink, 1);
-      p.ellipse(x + (i % 2 ? 2 : -2), 144 + (i % 3), 2.5, 1, i % 2 ? hex("#cc7546") : hex("#b65d3f"), 1);
+    for (const [groupX, n] of [[270, 4], [stumpX - 22, 5]]) {
+      for (let i = 0; i < n; i++) {
+        const x = groupX + i * 5, h = 3 + rand(883, groupX, i) * 3;
+        const cap = i % 2 ? hex("#bd6741") : hex("#9b5036");
+        p.line(x, 150, x, 150 - h, hex("#bca17a"));
+        p.poly([[x - 2, 150 - h], [x - 2, 149 - h], [x - 1, 148 - h], [x + 2, 148 - h], [x + 3, 149 - h], [x + 3, 150 - h]], ink);
+        p.poly([[x - 1, 149 - h], [x, 148 - h], [x + 2, 148 - h], [x + 2, 149 - h]], cap);
+        p.px(x, 148 - h, hex("#e4a067"));
+      }
     }
     // A stream occupies the last stretch; its banks meet the floor on both sides.
-    const riverX = FAR_PERIOD * 2 + 72, riverW = 336;
+    const riverX = FAR_PERIOD * 2 + 125, riverW = 180;
     p.rect(riverX, 154, riverW, H - 154, water[0]);
-    for (let i = 0; i < 36; i++) {
+    for (let i = 0; i < 26; i++) {
       const x = riverX + 5 + rand(881, i, 1) * (riverW - 10);
       const y = 156 + rand(881, i, 2) * 22;
-      const w = 2 + rand(881, i, 3) * 13;
+      const w = 2 + rand(881, i, 3) * 10;
       p.line(x, y, x + w, y, water[i % 3]);
       if (i % 3 === 0) p.line(x + 1, y + 1, x + w * 0.55, y + 1, hex("#586176"));
     }
-    p.rect(riverX, 150, 16, 4, moss);
-    p.rect(riverX + riverW - 16, 150, 16, 4, moss);
-    p.line(riverX + 4, 151, riverX + 13, 151, mossLight);
-    p.line(riverX + riverW - 13, 151, riverX + riverW - 4, 151, mossLight);
-    const bridgeX = riverX - 3, bridgeW = riverW + 6;
-    p.line(bridgeX + 13, 158, bridgeX + 27, 147, ink);
-    p.line(bridgeX + bridgeW - 13, 158, bridgeX + bridgeW - 27, 147, ink);
-    p.line(bridgeX + 13, 157, bridgeX + 27, 149, bark);
-    p.line(bridgeX + bridgeW - 13, 157, bridgeX + bridgeW - 27, 149, bark);
-    p.rect(bridgeX, 145, bridgeW, 6, ink);
-    p.rect(bridgeX + 2, 145, bridgeW - 4, 3, hex("#8a6040"));
-    for (let x = bridgeX + 5; x < bridgeX + bridgeW - 3; x += 8) {
-      p.line(x, 145, x, 150, hex("#c08a52"));
-      p.px(x + 2, 146, hex("#68432f"));
+    // Broken tree silhouettes ripple in the dark stream below the bridge.
+    for (let i = 0; i < 7; i++) {
+      const x = riverX + 10 + i * 31, y = 162 + (i % 3) * 4;
+      p.line(x, y, x + 3, y - 4, hex("#171d2d"));
+      p.line(x + 3, y - 4, x + 7, y - 3, hex("#171d2d"));
+      p.line(x + 3, y - 4, x + 2, y - 7, hex("#171d2d"));
     }
-    p.line(bridgeX, 144, bridgeX + bridgeW, 144, hex("#52372d"));
+    p.poly([[riverX - 8, 154], [riverX + 1, 150], [riverX + 18, 151], [riverX + 24, 154]], moss);
+    p.poly([[riverX + riverW - 24, 154], [riverX + riverW - 18, 151], [riverX + riverW - 1, 150], [riverX + riverW + 8, 154]], moss);
+    p.line(riverX - 4, 151, riverX + 16, 151, mossLight);
+    p.line(riverX + riverW - 16, 151, riverX + riverW + 4, 151, mossLight);
+    for (const x of [riverX + 2, riverX + riverW - 3]) {
+      p.ellipse(x, 154, 8, 2, ink, 0.8);
+      p.px(x - 4, 151, hex("#72705c")); p.px(x + 2, 150, hex("#4f4d48"));
+    }
+    const bridgeX = riverX + 24, bridgeW = 132;
+    // Each board is separate, with dark gaps, end grain and a slightly uneven edge.
+    for (let i = 0; i < 14; i++) {
+      const x = bridgeX + i * 9, y = 145 + (i % 4 === 0 ? 1 : 0), shade = i % 3;
+      p.rect(x, y, 8, 5, ink);
+      p.rect(x + 1, y + 1, 6, 3, [hex("#81563c"), hex("#946343"), hex("#704936")][shade]);
+      p.line(x + 2, y + 1, x + 5, y + 1, hex("#b37a4d"));
+      p.px(x + 2, y + 3, hex("#4f352e"));
+    }
+    // Rail posts and sagging rope keep the crossing readable at native size.
+    const postStep = (bridgeW - 6) / 4;
+    for (let i = 0; i <= 4; i++) {
+      const x = bridgeX + 3 + i * postStep;
+      p.rect(x - 2, 135, 5, 13, ink);
+      p.rect(x - 1, 136, 2, 10, bark);
+      p.px(x - 1, 136, hex("#a2754a"));
+    }
+    for (let i = 0; i < 4; i++) {
+      const x0 = bridgeX + 3 + i * postStep, x1 = x0 + postStep;
+      p.line(x0, 137, x0 + postStep * 0.25, 140, hex("#32252b"));
+      p.line(x0 + postStep * 0.25, 140, x0 + postStep * 0.75, 140, hex("#32252b"));
+      p.line(x0 + postStep * 0.75, 140, x1, 137, hex("#32252b"));
+      p.px(x0 + 8, 139, hex("#725138"));
+    }
     journeyCache = f;
     return f;
   }
@@ -455,22 +486,25 @@ export function createForest() {
     }
   }
 
-  function drawGladeMist(p, off) {
+  function drawFightMist(p) {
     const color = hex("#8992b5");
     p.place(0, 0);
-    for (let copy = -1; copy <= 1; copy++) {
-      const left = FAR_PERIOD + copy * JOURNEY_PERIOD - off;
-      const right = left + FAR_PERIOD;
-      const x0 = Math.max(0, left), x1 = Math.min(W, right);
-      for (let x = x0; x < x1; x++) {
-        const u = (x - left) / FAR_PERIOD;
-        for (const [baseY, height, phase] of [[119, 4, 0.2], [130, 6, 1.4], [140, 4, 2.5]]) {
-          const drift = Math.round(Math.sin(u * Math.PI * 2 + phase) * 4);
-          for (let y = baseY + drift; y < baseY + drift + height; y++) {
-            if (bay(x, y) < 0.38 && ((x + y + Math.floor(time * 2)) % 3 !== 0)) p.blend(x, y, color, 0.26);
-          }
+    for (let x = 0; x < W; x++) {
+      for (let i = 0; i < 2; i++) {
+        const center = 120 + i * 17 + Math.sin((x - time * 2.4) * 0.025 + i * 1.7) * 2.2;
+        const height = i === 0 ? 5 : 4;
+        for (let y = Math.floor(center - height / 2); y <= Math.ceil(center + height / 2); y++) {
+          if (bay(x, y) < 0.58) p.blend(x, y, color, i === 0 ? 0.36 : 0.3);
         }
       }
+    }
+  }
+
+  function drawThinRays(p) {
+    p.place(0, 0);
+    const warm = hex("#e8a06a");
+    for (const [top, drift] of [[66, 18], [254, -14]]) {
+      for (let y = 20; y < 112; y++) p.dot(Math.round(top + ((y - 20) / 92) * drift), y, warm, 0.16);
     }
   }
 
@@ -478,12 +512,8 @@ export function createForest() {
     const mist = PAL[m].mist;
     for (let y = 112; y < GROUND_Y; y++) {
       const a = clamp((y - 112) / (GROUND_Y - 1 - 112));
-      const band = m === "fight" ? Math.sin((y * 0.22) + scrollX * 0.003) * 0.13 : 0;
-      const k = clamp(a * a * 0.4 + band, 0, 0.42), row = y * W;
-      for (let x = 0; x < W; x++) {
-        const drift = m === "fight" ? Math.sin((x + scrollX * 0.055) * 0.035 + y * 0.09) * 0.045 : 0;
-        if (bay(x, y) < clamp(k + drift, 0, 0.48)) buf[row + x] = mix(buf[row + x], mist, 0.22 + 0.3 * a);
-      }
+      const k = a * a * 0.4, row = y * W;
+      if (m !== "fight") for (let x = 0; x < W; x++) if (bay(x, y) < k) buf[row + x] = mix(buf[row + x], mist, 0.22 + 0.3 * a);
     }
   }
 
@@ -510,14 +540,12 @@ export function createForest() {
     const p = painterFor(f);
     p.place(0, 0);
     const pal = PAL[m];
-    // canopy hanging from the top edge: overlapping masses with a scalloped, leafy underside
+    // Broken leaf masses hang from the top edge and leave thin windows to the sunset.
     for (const c of CANOPY) wrapDraw(p, MID_PERIOD, c.x, (x) => {
-      p.circle(x, c.y, c.r, pal.canopy);
+      drawLeafMass(p, x, c.y, c.r, pal, Math.round(c.x));
       for (const l of c.lobes) {
         const lx = x + l.dx, ly = c.y + l.dy + c.r * 0.5;
-        p.circle(lx, ly, l.r, pal.canopy);
-        p.circle(lx - l.r * 0.3, ly + l.r * 0.15, l.r * 0.55, pal.canopyLit);
-        p.dot(lx - l.r * 0.4, ly + l.r * 0.2, pal.leafLit);
+        drawLeafMass(p, lx, ly, l.r, pal, Math.round(c.x + l.dx));
       }
       for (let i = 0; i < 6; i++) {
         const dx = (rand(531, Math.round(c.x), i) - 0.5) * c.r * 1.7;
@@ -581,6 +609,9 @@ export function createForest() {
     p.fade = fade;
     const off = mod(Math.floor(scrollX * FRONT_SPEED), FRONT_PERIOD);
     for (const b of BLADES) copies(off, FRONT_PERIOD, 24, b.x, (x) => {
+      const worldX = mod(Math.floor(scrollX * FAR_SPEED) + Math.round(x), JOURNEY_PERIOD);
+      const riverX = FAR_PERIOD * 2 + 100;
+      if (m === "fight" && b.base > GROUND_Y + 2 && worldX >= riverX && worldX < riverX + 180) return;
       const sway = Math.sin(t * 1.5 + b.phase) * b.sway + Math.sin(t * 3.1 + b.phase * 2) * 0.5;
       for (let r = 0; r < b.h; r++) {
         const u = r / b.h;
@@ -682,8 +713,6 @@ export function createForest() {
       if (sum > 0) for (const m of MODES) weights[m] /= sum;
       fire.update(dt);
       flies.update(dt);
-      leaves.update(dt);
-      rays.update(dt);
       const lit = clamp(weights.camp + weights.night);
       const nightShare = lit > 0 ? weights.night / lit : 0;
       fire.options.height = 20 + 15 * nightShare;
@@ -714,10 +743,10 @@ export function createForest() {
     drawBack(frame) {
       const p = painterFor(frame);
       p.place(0, 0);
-      drawFxAlpha(frame, rays, "back", weights.fight * 0.16);
+      if (weights.fight > 0.002) drawThinRays(p);
       const midOff = mod(Math.floor(scrollX * MID_SPEED), MID_PERIOD);
       const nearOff = mod(Math.floor(scrollX * NEAR_SPEED), NEAR_PERIOD);
-      if (weights.fight > 0.002) drawGladeMist(p, mod(Math.floor(scrollX * FAR_SPEED), JOURNEY_PERIOD));
+      if (weights.fight > 0.002) drawFightMist(p);
       eachMode((m, fade) => blitStrip(frame, midFrame(m), midOff, fade));
       eachMode((m, fade) => blitStrip(frame, nearFrame(m), nearOff, fade));
       if (weights.fight > 0.002) {
@@ -738,7 +767,6 @@ export function createForest() {
     drawFront(frame) {
       const p = painterFor(frame);
       p.place(0, 0);
-      drawFxAlpha(frame, rays, "front", weights.fight * 0.16);
       drawFxAlpha(frame, flies, "front", clamp(weights.camp * 0.9 + weights.night + weights.fight * 0.34));
       drawFireFront(p, clamp(weights.camp + weights.night));
       eachMode((m, fade) => drawGrassLayer(p, m, fade, time));
@@ -748,48 +776,123 @@ export function createForest() {
 }
 
 // ---- shared tree shapes
+function drawLeafMass(p, x, y, radius, pal, seed) {
+  const contour = [
+    [-0.92, 0.16], [-0.82, -0.35], [-0.56, -0.58], [-0.36, -0.93], [-0.08, -0.73],
+    [0.21, -0.96], [0.43, -0.66], [0.82, -0.55], [0.7, -0.16], [0.98, 0.14],
+    [0.63, 0.32], [0.47, 0.65], [0.13, 0.47], [-0.19, 0.72], [-0.48, 0.43], [-0.84, 0.48],
+  ];
+  const hull = contour.map(([dx, dy]) => [x + dx * radius, y + dy * radius * 0.72]);
+  p.poly(hull, pal.leafDark);
+  for (let i = 0; i < contour.length; i++) {
+    if (rand(seed, i, 5) > 0.58) continue;
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    p.line(a[0], a[1], b[0], b[1], pal.ink);
+  }
+  for (let i = 0; i < 3; i++) {
+    const dx = (rand(seed, i, 2) - 0.5) * radius * 0.8;
+    const dy = (rand(seed, i, 3) - 0.5) * radius * 0.35;
+    const size = Math.max(1.5, radius * (0.18 + rand(seed, i, 4) * 0.1));
+    p.poly([[x + dx, y + dy], [x + dx + size, y + dy - 1], [x + dx + size + 1, y + dy + 1], [x + dx + 1, y + dy + 2]], i === 0 ? pal.leafMid : pal.canopyLit);
+    if (i === 1) p.px(x + dx + size, y + dy, pal.leafLit);
+  }
+}
+
+function drawFarSilhouette(p, x, base, height, width, color, lean) {
+  const top = base - height, mid = x + lean * 0.45;
+  p.poly([[x - width, base], [x + width, base], [mid + width * 0.55, top + height * 0.45], [mid + width * 0.3, top], [mid - width * 0.3, top], [mid - width * 0.55, top + height * 0.45]], color);
+  const branchY = top + height * 0.32;
+  for (const side of [-1, 1]) {
+    const endX = mid + side * (8 + width * 2), endY = branchY - 5;
+    p.poly([[mid, branchY + 5], [mid + side * 1.3, branchY + 5], [endX, endY + 1], [endX, endY - 1]], color);
+  }
+}
+
+function drawAncientTree(p, x, pal, seed) {
+  const base = GROUND_Y + 2;
+  const ys = [base, 124, 91, 57, 23, -12];
+  const centers = [x, x - 6, x - 8, x + 1, x + 14, x + 20];
+  const widths = [19, 15, 12, 9, 6, 3];
+  const left = [], right = [];
+  for (let i = 0; i < ys.length; i++) {
+    left.push([centers[i] - widths[i], ys[i]]);
+    right.unshift([centers[i] + widths[i], ys[i]]);
+  }
+  p.poly([...left, ...right], pal.ink);
+  const body = left.map(([px, py], i) => [px + (i === 0 ? 2 : 1), py]);
+  const innerRight = right.map(([px, py], i) => [px - (i === 5 ? 3 : 1), py]);
+  p.poly([...body, ...innerRight], pal.bark);
+  p.poly([[x - 14, 130], [x - 5, 126], [x + 8, 126], [x + 17, 131], [x + 47, 150], [x + 22, 151], [x + 8, 140], [x - 2, 137], [x - 22, 151], [x - 49, 151]], pal.ink);
+  p.poly([[x - 12, 131], [x - 4, 129], [x + 7, 129], [x + 15, 134], [x + 40, 149], [x + 24, 149], [x + 8, 136], [x - 2, 134], [x - 23, 149], [x - 42, 149]], pal.bark);
+  p.line(x - 10, 128, x - 39, 149, pal.barkLit);
+  p.line(x + 9, 129, x + 34, 148, pal.barkDark);
+  // Forks bend upward and split into irregular clusters instead of ending in round puffs.
+  p.poly([[x - 3, 80], [x - 1, 76], [x - 29, 47], [x - 48, 39], [x - 47, 35], [x - 25, 42], [x + 1, 67], [x + 4, 75]], pal.ink);
+  p.poly([[x + 5, 60], [x + 8, 57], [x + 29, 33], [x + 52, 28], [x + 53, 31], [x + 32, 37], [x + 11, 66]], pal.ink);
+  p.poly([[x + 9, 84], [x + 12, 80], [x + 37, 65], [x + 57, 67], [x + 56, 70], [x + 39, 70], [x + 15, 89]], pal.ink);
+  p.line(x + 17, 42, x + 29, 27, pal.barkLit);
+  drawLeafMass(p, x - 49, 32, 13, pal, seed + 1);
+  drawLeafMass(p, x + 54, 24, 14, pal, seed + 2);
+  drawLeafMass(p, x + 62, 66, 12, pal, seed + 3);
+  // Mossy seams and hanging vines break the trunk silhouette.
+  p.line(x - 9, 73, x - 7, 87, pal.moss);
+  p.line(x - 7, 87, x - 10, 98, pal.moss);
+  p.line(x + 6, 102, x + 9, 114, pal.moss);
+  p.line(x + 9, 114, x + 7, 127, pal.moss);
+  for (let i = 0; i < 4; i++) {
+    const vx = x - 20 + i * 13, vy = 53 + (i % 2) * 12, len = 11 + rand(seed, i) * 13;
+    p.line(vx, vy, vx + 1, vy + len, pal.barkDark);
+    p.line(vx + 1, vy + len, vx - 2, vy + len + 4, pal.moss);
+  }
+  for (let i = 0; i < 9; i++) {
+    const y = 34 + i * 10, cx = x + (y < 60 ? 8 : Math.sin(y * 0.05) * 3);
+    p.line(cx - 3, y, cx + 2, y + 3, i % 2 ? pal.barkDark : pal.barkLit);
+    p.px(cx + 4, y + 5, pal.ink);
+  }
+}
+
 function drawTrunk(p, t, x, pal) {
-  const base = GROUND_Y + 2, top = base - t.h, w = t.w, tw = Math.max(2, w * 0.52);
-  const tx = x + t.lean;
-  p.ellipse(x, GROUND_Y + 2, w * 1.5, 2.4, pal.ink, 0.38);
-  const ink = [[x - w / 2 - 1, base + 1], [x + w / 2 + 1, base + 1], [tx + tw / 2 + 1, top - 1], [tx - tw / 2 - 1, top - 1]];
-  p.poly(ink, pal.ink);
-  const body = [[x - w / 2, base], [x + w / 2, base], [tx + tw / 2, top], [tx - tw / 2, top]];
-  p.poly(body, (px, py) => {
-    const u = (px - x) / Math.max(1, w / 2);
-    const v = (py - top) / Math.max(1, base - top);
-    if (u > 0.4) return pal.barkDark;
-    if (v > 0.86) return pal.barkDark;
-    return pal.bark;
-  });
-  // lit left edge, broken up so it does not read as a stripe
-  p.poly([[x - w / 2, base], [x - w / 2 + Math.max(1.4, w * 0.28), base], [tx - tw / 2 + Math.max(1.2, tw * 0.3), top], [tx - tw / 2, top]], (px, py) => {
-    const r = rand(Math.round(px), Math.round(py / 9), t.seed);
-    return r > 0.22 ? pal.barkLit : pal.bark;
-  });
-  // roots
-  const root = Math.max(4, w * 1.25);
-  p.poly([[x - w / 2, base - 5], [x - w / 2 - root, base + 1], [x - w / 2 + 3, base + 1]], pal.bark);
-  p.poly([[x + w / 2, base - 5], [x + w / 2 + root, base + 1], [x + w / 2 - 3, base + 1]], pal.barkDark);
-  p.line(x - 2, base - 3, x - root * 0.7, base + 1, pal.barkLit);
-  p.line(x + 2, base - 2, x + root * 0.8, base + 1, pal.barkDark);
-  // a branch and its leaf clump
-  const by = base - t.h * t.branchAt, dir = t.branchSide;
-  const len = 16 + rand(t.seed, 1) * 18;
-  p.poly([[x, by], [x, by - 3], [x + dir * len, by - 8 - len * 0.2], [x + dir * len, by - 5 - len * 0.2]], pal.barkDark);
-  // leaves at the branch tip, so the bare stick reads as a bough
-  const ex = x + dir * len, ey = by - 7 - len * 0.2, r = 2.4 + len * 0.07;
-  p.circle(ex, ey, r + 0.8, pal.ink);
-  p.circle(ex, ey, r * 0.9, pal.leafDark);
-  p.circle(ex - r * 1.2, ey + r * 0.25, r * 0.62, pal.leafDark);
-  p.circle(ex + r * 1.15, ey - r * 0.15, r * 0.6, pal.leafDark);
-  p.circle(ex - r * 0.3, ey - r * 0.5, r * 0.55, pal.leafMid);
-  p.dot(ex + r * 0.5, ey - r * 0.7, pal.leafLit);
-  const lowBy = base - t.h * (0.38 + rand(t.seed, 8) * 0.18), lowDir = -dir;
-  const lowLen = 9 + rand(t.seed, 9) * 10;
-  p.poly([[x + lowDir * 1, lowBy], [x + lowDir * 2, lowBy - 2], [x + lowDir * lowLen, lowBy - 5], [x + lowDir * lowLen, lowBy - 2]], pal.barkDark);
-  p.circle(x + lowDir * lowLen, lowBy - 5, 4, pal.leafDark);
-  p.dot(x + lowDir * (lowLen - 1), lowBy - 7, pal.leafLit);
+  const base = GROUND_Y + 2, top = base - t.h, w = t.w;
+  const centerAt = (u) => x + t.lean * u + t.curve * Math.sin(u * Math.PI * 1.6) * u;
+  const halfAt = (u) => w * (0.62 - u * 0.28);
+  const left = [], right = [];
+  for (let i = 0; i <= 6; i++) {
+    const u = i / 6, y = base - u * t.h, cx = centerAt(u), half = halfAt(u);
+    left.push([cx - half - 0.8, y]);
+    right.unshift([cx + half + 0.8, y]);
+  }
+  p.poly([...left, ...right], pal.ink);
+  p.poly(left.map(([px, py], i) => [px + 1, py]).concat(right.map(([px, py]) => [px - 1, py])), (px, py) => py > base - 8 ? pal.barkDark : pal.bark);
+  for (let i = 0; i < 6; i++) {
+    const u0 = i / 6, u1 = (i + 1) / 6;
+    p.line(centerAt(u0) - halfAt(u0) * 0.35, base - u0 * t.h, centerAt(u1) - halfAt(u1) * 0.35, base - u1 * t.h, i % 2 ? pal.barkLit : pal.bark);
+  }
+  const root = Math.max(5, w * 2.4);
+  p.poly([[x - w * 0.5, base - 7], [x - root, base + 2], [x - w * 0.1, base + 1]], pal.barkDark);
+  p.poly([[x + w * 0.5, base - 6], [x + root, base + 2], [x + w * 0.1, base + 1]], pal.barkDark);
+  p.line(x - 2, base - 5, x - root * 0.85, base + 1, pal.barkLit);
+  p.line(x + 1, base - 4, x + root * 0.82, base + 1, pal.bark);
+  const makeBranch = (u, side, length, seed) => {
+    const by = base - t.h * u, cx = centerAt(u);
+    const mx = cx + side * length * 0.56, my = by - length * 0.48;
+    const ex = cx + side * length, ey = by - length * 0.72;
+    p.poly([[cx, by + 2], [cx + side * 2, by], [mx, my + 2], [ex, ey - 1], [ex + side, ey + 2], [mx + side, my + 5]], pal.barkDark);
+    p.line(cx, by, mx, my + 2, pal.barkLit);
+    p.line(mx, my + 3, ex, ey + 1, pal.bark);
+    drawLeafMass(p, ex, ey - 1, 3.4 + rand(seed, 4) * 3.2, pal, seed);
+  };
+  makeBranch(t.branchAt, t.branchSide, 11 + rand(t.seed, 1) * 16, t.seed);
+  makeBranch(0.42 + rand(t.seed, 2) * 0.28, -t.branchSide, 9 + rand(t.seed, 3) * 13, t.seed + 1);
+  if (t.moss) {
+    const u = 0.08, m = base - t.h * u;
+    p.line(centerAt(u) - 1, m, centerAt(u) + 1, m + 5, pal.moss);
+    p.px(centerAt(u) + 2, m + 6, pal.moss);
+  }
+  for (let i = 0; i < 2; i++) {
+    const u = 0.45 + i * 0.24, cx = centerAt(u), y = base - u * t.h;
+    p.line(cx + 1, y, cx + 2, y + 8 + i * 2, pal.barkDark);
+    p.line(cx + 2, y + 8 + i * 2, cx - 1, y + 11 + i * 2, pal.moss);
+  }
   if (t.moss) {
     const m = base - t.h * 0.08;
     p.dot(x - w * 0.35, m, pal.moss);
@@ -810,14 +913,8 @@ function drawSapling(p, s, x, pal) {
   p.rect(x, top + 2, 1, s.h - 3, pal.bark);
   p.px(x, top + 4, pal.barkLit);
   const dir = rand(s.seed, 9) < 0.5 ? -1 : 1, r = s.r;
-  p.circle(x, top - 1, r + 0.8, pal.ink);
-  p.circle(x, top - 1, r, pal.leafDark);
-  p.circle(x - r * 0.9, top + r * 0.3, r * 0.66, pal.leafDark);
-  p.circle(x + r * 0.95, top + r * 0.15, r * 0.6, pal.leafDark);
-  p.circle(x - r * 0.35, top - r * 0.6, r * 0.55, pal.leafMid);
-  p.circle(x + dir * r * 1.1, top - r * 0.15, r * 0.45, pal.leafMid);
-  p.circle(x + r * 0.35, top + r * 0.45, r * 0.5, pal.leafMid);
-  p.dot(x - r * 0.5, top - r * 0.5, pal.leafLit);
+  drawLeafMass(p, x, top - 1, r, pal, s.seed);
+  drawLeafMass(p, x + dir * r, top + r * 0.4, r * 0.55, pal, s.seed + 1);
   p.dot(x + r * 0.55, top + r * 0.1, pal.leafLit);
   p.line(x, top + r * 0.8, x + dir * r * 0.8, top + r * 1.3, pal.barkDark);
 }
