@@ -7,10 +7,12 @@ import { createForest } from "./game/scene/forest.js";
 import { createDirector } from "./game/director/director.js";
 import { loadSavedSession } from "./game/director/session.js";
 import { createSfx } from "./audio/sfx.js";
+import { createProgress } from "./game/progress/progress.js";
 import { createUI } from "./ui/ui.js";
 
 const stage = createStage(document.getElementById("stage"));
 const sfx = createSfx();
+const progress = createProgress();
 const menuForest = createForest();
 const menuHeroine = createHeroine({ x: 146, y: GROUND_Y });
 menuHeroine.play("idle");
@@ -49,7 +51,7 @@ function startSession(preset, restored = load(preset), { userGesture = true } = 
   const heroine = createHeroine({ x: 112, y: GROUND_Y });
   timer = session;
   activeForest = forest;
-  director = createDirector({ stage, forest, heroine, timer: session, sfx });
+  director = createDirector({ stage, forest, heroine, timer: session, sfx, progress, ui });
   ui.showHud(preset);
   session.on("change", () => save(session));
   save(session);
@@ -102,8 +104,8 @@ startLoop((dt) => {
   stage.clear();
   if (director && activeForest) {
     director.draw();
-    stage.present(activeForest.background());
-    ui.render(timer.state(), director.stats());
+    stage.present(director.background());
+    ui.render(timer.state(), director.stats(), progress.state());
   } else {
     menuForest.drawBack(stage.frame);
     menuHeroine.draw(stage.frame);
