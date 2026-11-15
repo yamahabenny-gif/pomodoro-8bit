@@ -1,25 +1,52 @@
 # Pomodoro 8-Bit
 
-Ein Pomodoro-Timer im Pixel-Art-Look: Während du dich konzentrierst, kämpft eine kleine Heldin im Wald gegen Gnome,
-Orks und Oger. In der Pause rastet sie am Lagerfeuer. Läuft komplett im Browser, ohne Konto und ohne Backend.
+Ein Pomodoro-Timer im Pixel-Art-Look: Während du dich konzentrierst, kämpft eine kleine Ritterin im
+Dämmerungswald gegen Gnome, Halb-Orks, Oger und einen Steingolem. In der Pause rastet sie im Gewitter-Unterschlupf
+oder am See, entzündet ein Feuer und sammelt mit jeder Fokusminute Erfahrung. Läuft komplett im Browser, ohne Konto
+und ohne Backend.
 
 **[▶ Live spielen](https://yamahabenny-gif.github.io/pomodoro-8bit/)** · [Plan und Arbeitspakete](docs/PLAN.md) ·
 [Regeln für Agenten](AGENTS.md)
 
-![Kampf im Wald](docs/img/issue-9/kampf.gif)
+![Kampf gegen den Steingolem im Dämmerungswald](docs/img/issue-31/kampf.gif)
 
 ## So läuft eine Session
 
 1. Im Menü eine von drei Teilungen wählen (Maus, `1`–`3` oder Pfeiltasten + Enter).
-2. **Kampf** (Fokuszeit): Die Heldin läuft durch den Wald, Gnome, Orks und Oger stellen sich ihr in den Weg. Das
-   HUD zeigt Restzeit, Phase, Zyklus-Punkte und wie viele Gegner du heute schon besiegt hast.
-3. **Rast** (Pause): Sie geht zum Lagerfeuer und setzt sich. Nach vier Fokuspausen wird die Pause lang und der Wald
-   wird Nacht. Danach beginnt der nächste Zyklus – die Heldin steht auf und läuft weiter.
+2. **Kampf** (Fokuszeit): Die Heldin läuft durch den Dämmerungswald – vorbei an knorrigen Bäumen, Nebel-Lichtungen
+   und einer Bachbrücke. Gnome, Halb-Orks, Oger und spät in der Phase ein Steingolem stellen sich ihr in den Weg.
+   Das HUD zeigt Restzeit, Phase, Zyklus-Punkte, die heutigen Siege und die Erfahrungsleiste.
+3. **Rast** (Pause): Sie geht zu einem von zwei Plätzen, entzündet Feuer und setzt sich – bei Gewitter unter dem
+   Felsvorsprung im Regen, sonst am Lagerfeuer vor dem See mit Glühwürmchen. Nach vier Fokusphasen wird die Pause
+   lang und die Szene nächtlich. Danach beginnt der nächste Zyklus: Die Heldin steht auf und läuft weiter.
 
 Pause, Weiter, Überspringen und Zurücksetzen gehen jederzeit; der Timer rechnet mit Zeitstempeln, bleibt also auch
-im Hintergrund-Tab und nach dem Standby korrekt. Nach einem Reload landet man im Menü; die Wahl derselben Variante
-setzt die gespeicherte Session mit korrekter Restzeit fort ([#19](https://github.com/yamahabenny-gif/pomodoro-8bit/issues/19)).
-Die Seite funktioniert auf dem Desktop und im Handy-Querformat.
+im Hintergrund-Tab und nach dem Standby korrekt. Nach einem Reload läuft die gespeicherte Session automatisch weiter
+– auch mitten in Kampf oder Rast. Die Seite funktioniert auf dem Desktop und im Handy-Querformat.
+
+## Features
+
+- **Level-Up:** Jede Fokusminute zählt als Erfahrung. Für Level 2 braucht es 15 Minuten, danach jeweils fünf mehr
+  (20, 25, …). Die Leiste im HUD füllt sich mit der Uhr, bei Erreichen blinkt das **LEVEL UP!**-Banner, die Heldin
+  reckt das Schwert und ein Fanfaren-Sound spielt. Der Stand bleibt über Reloads erhalten.
+- **Rast-Szenen:** Die Pausen wechseln zwischen dem **Gewitter-Unterschlupf** (Regen, entfernte Blitze, sie schlägt
+  Feuer unter dem Felsvorsprung) und dem **See** (Glühwürmchen über dem Wasser, Mond und Feuer spiegeln sich). Die
+  lange Pause nach vier Zyklen spielt bei Nacht. In beiden Szenen muss sie das Feuer erst entzünden – Funken,
+  Rauch, dann Flammen.
+
+### Gegner
+
+Vier Typen mit eigener Taktik, die im Lauf einer Fokusphase härter werden:
+
+| Gegner | Treffer | Verhalten |
+|---|---|---|
+| Gnom | 1–2 | klein und schnell, rote Zipfelmütze |
+| Halb-Ork | 3 | muskulös, Axt und Rundschild, blockt gelegentlich einen Schlag |
+| Oger | 5 | groß und langsam, Keule mit Bodenschlag |
+| Steingolem | 7 | moosige Schulter, glühende Risse, zerbröselt zu Geröll |
+
+Insgesamt erscheinen pro Fokusphase rund 48 Gegner (etwa zwei pro Fokusminute) – doppelt so viele wie vor dem
+Ausbau. Die letzten beiden im letzten Viertel sind Steingolems.
 
 ## Varianten
 
@@ -47,16 +74,26 @@ Die Buttons im HUD machen dasselbe mit der Maus oder dem Finger.
 
 <table>
 <tr>
-<td><img src="docs/img/issue-9/menu.png" alt="Startmenü mit drei Varianten"></td>
-<td><img src="docs/img/issue-9/rast.png" alt="Heldin am Lagerfeuer in der kurzen Pause"></td>
+<td><img src="docs/img/issue-31/menu.png" alt="Startmenü mit drei Varianten"></td>
+<td><img src="docs/img/issue-31/golem.png" alt="Kampf gegen den Steingolem im Dämmerungswald"></td>
 </tr>
 <tr>
 <td align="center">Startmenü</td>
-<td align="center">Kurze Pause am Lagerfeuer</td>
+<td align="center">Kampf gegen den Steingolem</td>
+</tr>
+<tr>
+<td><img src="docs/img/issue-31/rast-gewitter.png" alt="Heldin entzündet im Gewitter ein Feuer unter dem Felsvorsprung"></td>
+<td><img src="docs/img/issue-31/rast-see.png" alt="Lagerfeuer am See mit Glühwürmchen"></td>
+</tr>
+<tr>
+<td align="center">Rast im Gewitter</td>
+<td align="center">Rast am See</td>
 </tr>
 </table>
 
-![Lange Pause bei Nacht](docs/img/issue-9/lange-rast.png)
+![Level-Up: Erfahrungsleiste füllt sich, LEVEL UP!-Banner](docs/img/issue-31/levelup.png)
+
+![Lange Rast bei Nacht](docs/img/issue-31/lange-rast.png)
 
 ## Entwicklung
 
@@ -70,15 +107,20 @@ npm run preview    # gebauten Stand lokal ansehen
 
 Für den Browser-Test mit Zeitraffer die URL ergänzen: `?speed=60` macht aus einer Minute eine Sekunde
 (`?speed=600` entsprechend eine Zehntelsekunde). Praktisch für Phasenwechsel und Pausen, ohne 25 Minuten zu warten.
+Für die späten Gegner (Oger, Steingolem) ist `?speed=4` besser: Der Fokus dauert dann gut sechs Minuten, die Kämpfe
+laufen in Echtzeit mit und der Golem erscheint noch vor dem Phasenende.
 
 ### Tests
 
 - `npm test` – Unit-Tests (Vitest, `tests/**/*.test.js`).
-- `npm run test:e2e` – Playwright-Smoke-Test gegen den gebauten Stand: Menü → Klassisch → HUD → Phasenwechsel
-  Kampf/Rast, ohne Konsolenfehler. Startet `vite preview` selbst; beim ersten Mal einmalig
-  `npx playwright install chromium`.
-- `node tests/e2e/qa-report.mjs` – DoD-Checkliste im Browser (HUD, Tastatur, Hintergrund-Tab, Reload, Handy-Querformat).
+- `npm run test:e2e` – Playwright-Smoke-Test gegen den gebauten Stand: Menü → Klassisch → HUD → XP-Leiste wächst,
+  LEVEL UP!-Banner → Phasenwechsel Kampf/Rast, Rast-Szene mit brennendem Feuer, ohne Konsolenfehler. Startet
+  `vite preview` selbst; beim ersten Mal einmalig `npx playwright install chromium`.
+- `node tests/e2e/qa-report.mjs` – DoD-Checkliste im Browser: Menü, HUD, XP, Level-Up, alle vier Gegner inklusive
+  Golem, beide Rast-Szenen mit Entzünden, lange Rast, Reload in Kampf und Rast, Tastatur, Hintergrund-Tab,
+  Handy-Querformat, bekannte Lücken verlinkt. Dauert wegen des Golem-Laufs etwa zehn Minuten.
 - `node tests/e2e/perf.mjs` – eine Minute fps, Frametimes und JS-Heap.
+- `node tests/e2e/shots.mjs --gif` – erneuert die README-Bilder und das GIF unter `docs/img/issue-31/`.
 - `node tools/snap.mjs tools/scenes/forest-fight.mjs snaps/fight.png 2` – rendert eine Szene headless als PNG.
 
 ### Deployment
@@ -100,11 +142,12 @@ src/main.js           Boot: Menü -> Timer -> Regie
 src/config/presets.js die drei Varianten
 src/engine/stage.js   pixelfx-Frame, composite(), rAF-Loop
 src/timer/            zeitstempelbasierter Zustandsautomat, localStorage
-src/game/heroine/     Heldin: Sprite + Animationen
-src/game/enemies/     Gnom, Ork, Oger
-src/game/scene/       Parallax-Wald, Lagerfeuer, Tageszeiten
+src/game/heroine/     Heldin: Sprite + Animationen (Ritterin, lightFire, levelUp)
+src/game/enemies/     Gnom, Halb-Ork, Oger, Steingolem
+src/game/scene/       Dämmerwald-Reise, Rast-Szenen (Gewitter, See)
+src/game/progress/    Fokus-XP, Level und XP-Leiste
 src/game/director/    verbindet Timer-Ereignisse mit der Bühne
-src/ui/               Startmenü, HUD, Tastatur
+src/ui/               Startmenü, HUD mit XP-Leiste, LEVEL UP!-Banner, Tastatur
 src/audio/            WebAudio-8-Bit-Sounds, Ambience, Notifications
 vendor/pixelfx/       vendored, unverändert
 tools/snap.mjs        rendert eine Szene headless als PNG
