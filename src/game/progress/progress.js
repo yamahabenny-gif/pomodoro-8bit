@@ -6,8 +6,11 @@
 // createProgress({ storage = localStorage-or-null, key = "pomodoro8bit.progress.v1" }) returns:
 //   state(): { level, xp (minutes into this level), need (xpForLevel(level)), ratio 0..1, totalMinutes }
 //   sync(timerState)             call every frame with timer.state(); adds the focus time that passed since the
-//                                last call (only while phase === "focus" and running; a skip or phase change never
-//                                counts the skipped remainder). Returns the levels gained this call ([] usually).
+//                                last call (only while phase === "focus" and running). A manual skip still counts
+//                                nothing of the skipped remainder, but a focus phase that ran out while the tab was
+//                                in the background is credited in full: if completedFocus grew between two samples
+//                                the phase ended on time, and without that counter a switch focus -> break is read
+//                                as a normal end. Returns the levels gained this call ([] usually).
 //   on("levelup", fn) -> off     fn({ level }) once per level gained, in order
 //   reset()                      back to level 1 (for tests/debug only, the UI does not offer it)
 // Persists after every level-up and at most every 5 s of progress (storage errors are swallowed).
@@ -17,6 +20,8 @@
 //   as fast as the clock runs and a paused timer gives nothing.
 // - After a reload (or a long background gap) the first sync only takes a bearing; the next sync sees the jump and
 //   emits every level it crossed, in order.
+// - Background tabs stop requestAnimationFrame, so one sync can span a finished focus phase (or several phases).
+//   completedFocus tells an on-time end apart from a skip; without it the state is assumed to have run out.
 // - opts.now (default Date.now) only paces the persistence, it does not add XP.
 
 const DEFAULT_KEY = "pomodoro8bit.progress.v1";
@@ -49,7 +54,8 @@ export function createProgress(opts = {}) {
   let level = 1;
   let xp = 0; // minutes into the current level
   let totalMinutes = 0;
-  let lastSample = null; // { remainingMs, phase, running }
+  let lastSample = null; // { remainingMs, phase, running, completedFocus, totalMs }
+  let focusMs = 0; // duration of the last focus phase seen, for phases that both start and end between samples
   let lastSaveAt = 0;
   let dirty = false;
 
@@ -123,22 +129,15 @@ export function createProgress(opts = {}) {
       remainingMs: Math.max(0, Number(sample.remainingMs)),
       phase: sample.phase ?? "focus",
       running: Boolean(sample.running),
+      completedFocus: finite(sample.completedFocus) ? Number(sample.completedFocus) : null,
+      totalMs: finite(sample.totalMs) && Number(sample.totalMs) > 0 ? Number(sample.totalMs) : null,
     };
     const previous = lastSample;
     lastSample = current;
-    // Only a stretch that stays inside one running focus phase counts; a phase change or a skip jumps the
-    // remaining time and would otherwise look like work that never happened.
+    if (current.phase === "focus" && current.totalMs) focusMs = current.totalMs;
     if (!previous) return [];
-    if (
-      previous.phase !== "focus" ||
-      current.phase !== "focus" ||
-      !previous.running ||
-      !current.running
-    ) {
-      return [];
-    }
-    const worked = previous.remainingMs - current.remainingMs;
-    const gained = grant(worked / MINUTE_MS);
+
+    const gained = grant(focusMinutesBetween(previous, current));
     if (!gained.length) {
       if (dirty && now() - lastSaveAt >= SAVE_EVERY_MS) persist();
       return gained;
@@ -146,6 +145,53 @@ export function createProgress(opts = {}) {
     persist();
     for (const reached of gained) emit({ level: reached });
     return gained;
+  }
+
+  /**
+   * Focus minutes between two samples. While the same focus runs this is just the drop of remainingMs; a phase
+   * change in between (background tab, requestAnimationFrame stopped) is settled with the focus time that was
+   * still on the clock, provided the focus ended on time.
+   */
+  function focusMinutesBetween(previous, current) {
+    // Paused time, and a resumed run whose first frame still carries the paused sample, give nothing.
+    if (!previous.running || !current.running) return 0;
+
+    const ended = focusPhasesEnded(previous, current);
+    if (previous.phase === "focus" && current.phase === "focus" && ended === 0) {
+      return Math.max(0, (previous.remainingMs - current.remainingMs) / MINUTE_MS);
+    }
+
+    let workedMs = 0;
+    if (previous.phase === "focus") {
+      // A skip reports the same phase switch without growing completedFocus, so `ended` stays 0 and the
+      // skipped remainder counts nothing.
+      if (ended === 0) return 0;
+      // The focus we sat in ran out: credit what was left of it, plus every further focus phase that ended.
+      workedMs = previous.remainingMs + (ended - 1) * focusMs;
+    } else {
+      // We came back from a break: any focus phase that already ended while we were away is complete work.
+      workedMs = ended * focusMs;
+    }
+    if (current.phase === "focus") workedMs += elapsedFocusMs(current);
+    return Math.max(0, workedMs / MINUTE_MS);
+  }
+
+  /**
+   * How many focus phases ran out between two samples. completedFocus is the timer's own count and settles it;
+   * a state without that counter is assumed to have ended the phase normally (a skip can only happen on screen,
+   * where the frames do run, so the counter is there whenever a skip is possible).
+   */
+  function focusPhasesEnded(previous, current) {
+    if (previous.completedFocus !== null && current.completedFocus !== null) {
+      return Math.max(0, current.completedFocus - previous.completedFocus);
+    }
+    return previous.phase === "focus" && current.phase !== "focus" ? 1 : 0;
+  }
+
+  /** Focus time already run inside `sample`'s focus phase, in ms. */
+  function elapsedFocusMs(sample) {
+    if (sample.phase !== "focus" || !sample.totalMs) return 0;
+    return Math.max(0, sample.totalMs - sample.remainingMs);
   }
 
   function on(event, fn) {

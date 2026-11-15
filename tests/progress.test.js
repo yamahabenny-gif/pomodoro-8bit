@@ -18,17 +18,19 @@ function memoryStorage() {
   };
 }
 
-const focus = (minutesLeft, running = true) => ({
+const focus = (minutesLeft, running = true, completedFocus = null) => ({
   phase: "focus",
   running,
   remainingMs: minutesLeft * MINUTE,
   totalMs: 25 * MINUTE,
+  ...(completedFocus === null ? {} : { completedFocus }),
 });
-const phase = (name, minutesLeft, running = true) => ({
+const phase = (name, minutesLeft, running = true, completedFocus = null) => ({
   phase: name,
   running,
   remainingMs: minutesLeft * MINUTE,
   totalMs: 5 * MINUTE,
+  ...(completedFocus === null ? {} : { completedFocus }),
 });
 
 describe("xpForLevel", () => {
@@ -93,11 +95,64 @@ describe("createProgress", () => {
 
   it("never counts the rest of a focus phase that was skipped", () => {
     const progress = createProgress({ storage: null });
-    progress.sync(focus(25));
-    progress.sync(focus(20)); // 5 minutes done
-    progress.sync(phase("short", 5)); // skip: focus 20 min left, break begins
+    progress.sync(focus(25, true, 0));
+    progress.sync(focus(20, true, 0)); // 5 minutes done
+    // The timer keeps completedFocus at 0 when S skips the phase, so the switch to the break gives nothing.
+    progress.sync(phase("short", 5, true, 0));
     expect(progress.state().xp).toBeCloseTo(5, 6);
     expect(progress.state().totalMinutes).toBeCloseTo(5, 6);
+  });
+
+  // Regression for issue #40: in a background tab requestAnimationFrame stops, so the next sample is
+  // already the break (or a later phase) and the focus time that ran out has to be credited.
+  it("credits a focus phase that ran out in a background tab (issue #40 repro)", () => {
+    const progress = createProgress({ storage: null });
+    const M = MINUTE;
+    progress.sync({ phase: "focus", remainingMs: 25 * M, running: true });
+    progress.sync({ phase: "focus", remainingMs: 15 * M, running: true }); // 10 min credited
+    progress.sync({ phase: "short", remainingMs: 5 * M, running: true }); // back only after the focus ended
+    progress.sync({ phase: "focus", remainingMs: 25 * M, running: true });
+    expect(progress.state().totalMinutes).toBeCloseTo(25, 6);
+  });
+
+  it("credits the rest of the focus when completedFocus grew across the gap", () => {
+    const progress = createProgress({ storage: null });
+    progress.sync(focus(25, true, 0));
+    progress.sync(focus(15, true, 0)); // 10 minutes
+    progress.sync(phase("short", 5, true, 1)); // the focus ran out on time while we were away
+    expect(progress.state().totalMinutes).toBeCloseTo(25, 6);
+    // the break itself gives nothing
+    progress.sync(phase("short", 1, true, 1));
+    expect(progress.state().totalMinutes).toBeCloseTo(25, 6);
+  });
+
+  it("does not count a skip even when the break is already running", () => {
+    const progress = createProgress({ storage: null });
+    progress.sync(focus(25, true, 2));
+    progress.sync(focus(20, true, 2)); // 5 minutes
+    expect(progress.sync(phase("short", 5, true, 2))).toEqual([]);
+    expect(progress.state().totalMinutes).toBeCloseTo(5, 6);
+    // the next focus starts from the top and counts from there on
+    progress.sync(focus(25, true, 2));
+    progress.sync(focus(24, true, 2));
+    expect(progress.state().totalMinutes).toBeCloseTo(6, 6);
+  });
+
+  it("settles several focus phases that passed in the background", () => {
+    const progress = createProgress({ storage: null });
+    progress.sync(focus(25, true, 0));
+    progress.sync(focus(25, true, 1)); // focus 1 ended (25 min), break ran, focus 2 is fresh
+    expect(progress.state().totalMinutes).toBeCloseTo(25, 6);
+    progress.sync(focus(25, true, 2)); // focus 2 ended as well
+    expect(progress.state().totalMinutes).toBeCloseTo(50, 6);
+  });
+
+  it("counts the part of the new focus that already ran after a background break", () => {
+    const progress = createProgress({ storage: null });
+    progress.sync(focus(25, true, 0));
+    progress.sync(phase("short", 1, true, 1)); // focus done, break almost over
+    progress.sync(focus(18, true, 1)); // the break ended and 7 of the next focus minutes passed
+    expect(progress.state().totalMinutes).toBeCloseTo(25 + 7, 6);
   });
 
   it("fires every level of a long jump in order", () => {
