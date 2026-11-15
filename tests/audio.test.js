@@ -4,6 +4,9 @@ import {
   notify,
   requestPermission,
   renderSound,
+  renderAmbience,
+  AMBIENCES,
+  AMBIENCE_MODES,
   SOUNDS,
   SOUND_NAMES,
   durationOf,
@@ -75,6 +78,8 @@ describe("sfx without WebAudio", () => {
       sfx.setMuted(true);
       sfx.ambience("forest");
       sfx.ambience("fire");
+      sfx.ambience("rain");
+      sfx.ambience("lake");
       sfx.ambience("nonsense");
       sfx.ambience(null);
       sfx.setMuted(false);
@@ -197,12 +202,11 @@ describe("WebAudio scheduling", () => {
     expect(created.sources).toBeGreaterThan(0);
     expect(created.filters).toBeGreaterThan(0);
 
-    const beforeForest = created.sources;
-    sfx.ambience("forest");
-    expect(created.sources).toBeGreaterThan(beforeForest); // the bed started
-    const afterForest = created.sources;
-    sfx.ambience("fire");
-    expect(created.sources).toBeGreaterThan(afterForest);
+    for (const bed of AMBIENCE_MODES) {
+      const before = created.sources;
+      sfx.ambience(bed);
+      expect(created.sources, bed).toBeGreaterThan(before); // the bed started
+    }
     expect(() => sfx.ambience(null)).not.toThrow();
     expect(() => sfx.setMuted(true)).not.toThrow();
     expect(sfx.muted).toBe(true);
@@ -220,11 +224,14 @@ describe("WebAudio scheduling", () => {
 });
 
 describe("sound design", () => {
-  it("documents all seven sounds with short, quiet voices", () => {
-    expect(SOUND_NAMES).toEqual(["swing", "hit", "enemyDie", "hurt", "phaseFocus", "phaseBreak", "click"]);
+  it("documents every sound with short, quiet voices", () => {
+    expect(SOUND_NAMES).toEqual([
+      "swing", "hit", "enemyDie", "hurt", "phaseFocus", "phaseBreak", "click",
+      "levelUp", "thunder", "ignite", "block", "rockHit",
+    ]);
     for (const [name, sound] of Object.entries(SOUNDS)) {
       expect(sound.dur, name).toBeGreaterThan(0);
-      expect(sound.dur, name).toBeLessThan(1.4);
+      expect(sound.dur, name).toBeLessThan(2.2);
       expect(sound.level, name).toBeGreaterThanOrEqual(0.5);
       expect(sound.level, name).toBeLessThanOrEqual(3);
       for (const v of sound.voices) {
@@ -250,5 +257,75 @@ describe("sound design", () => {
       expect(a, name).toEqual(b);
     }
     expect(renderSound("nope")).toHaveLength(0);
+  });
+});
+
+const peakOf = (samples) => samples.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+
+describe("wave 4 sounds", () => {
+  it("level up is a rising arpeggio into a held chord", () => {
+    const sound = SOUNDS.levelUp;
+    expect(sound.dur).toBeGreaterThanOrEqual(0.9);
+    expect(sound.dur).toBeLessThanOrEqual(1.1);
+    const opening = sound.voices.filter((v) => v.type === "tone" && (v.t ?? 0) < 0.3);
+    expect(opening.length).toBeGreaterThanOrEqual(4);
+    for (let i = 1; i < opening.length; i++) expect(opening[i].from).toBeGreaterThan(opening[i - 1].from);
+    const chord = sound.voices.filter((v) => Math.abs((v.t ?? 0) - 0.36) < 0.02 && v.dur >= 0.4);
+    expect(chord.length).toBeGreaterThanOrEqual(4); // a chord, not one long note
+  });
+
+  it("thunder is distant: long, low, slow and quieter than the fanfare", () => {
+    const sound = SOUNDS.thunder;
+    expect(sound.dur).toBeGreaterThanOrEqual(1.8);
+    expect(sound.dur).toBeLessThanOrEqual(2.2);
+    const noise = sound.voices.filter((v) => v.type === "noise");
+    expect(noise.length).toBeGreaterThanOrEqual(2);
+    for (const v of noise) {
+      if (v.filter.type === "lowpass") expect(v.filter.to ?? v.filter.from).toBeLessThan(300);
+      expect(v.attack ?? 0).toBeGreaterThan(0.02); // swells in, never snaps
+    }
+    expect(peakOf(renderSound("thunder"))).toBeLessThan(peakOf(renderSound("levelUp")) * 0.5);
+  });
+
+  it("ignite clicks the flint before the flame catches", () => {
+    const sound = SOUNDS.ignite;
+    const clicks = sound.voices.filter((v) => v.type === "noise" && v.dur <= 0.04 && (v.t ?? 0) < 0.1);
+    expect(clicks.length).toBeGreaterThanOrEqual(2);
+    for (const c of clicks) {
+      expect(c.filter.type).toBe("highpass");
+      expect(c.filter.from).toBeGreaterThan(2000);
+    }
+    expect(sound.voices.some((v) => v.type === "noise" && v.dur >= 0.4)).toBe(true);
+  });
+
+  it("block rings metal, rock hit stays dull", () => {
+    const block = SOUNDS.block, rock = SOUNDS.rockHit;
+    expect(block.voices.some((v) => v.type === "tone" && v.dur >= 0.25)).toBe(true); // a ring, not a click
+    expect(block.voices.some((v) => v.type === "noise" && v.filter.from >= 2500)).toBe(true);
+    for (const v of rock.voices) {
+      if (v.type === "tone") expect(v.from).toBeLessThan(250);
+      if (v.type === "noise") expect(v.filter.from).toBeLessThan(2000);
+    }
+  });
+});
+
+describe("wave 4 ambience", () => {
+  it("has the two new beds next to forest and fire", () => {
+    expect(AMBIENCE_MODES).toEqual(["forest", "fire", "rain", "lake"]);
+    expect(AMBIENCES.rain.layers.some((l) => l.type === "highpass")).toBe(true);
+    expect(AMBIENCES.rain.grains.kind).toBe("drip");
+    expect(AMBIENCES.lake.grains.kind).toBe("cricket");
+    expect(AMBIENCES.lake.layers.some((l) => (l.lfo ?? 1) < 0.3)).toBe(true); // slow lapping
+  });
+
+  it("renders every bed offline, deterministic and audible", () => {
+    for (const mode of AMBIENCE_MODES) {
+      const a = renderAmbience(mode, 2, 8000), b = renderAmbience(mode, 2, 8000);
+      expect(a.length, mode).toBe(16000);
+      expect(peakOf(a), mode).toBeGreaterThan(0.01);
+      expect(peakOf(a), mode).toBeLessThan(1);
+      expect(a, mode).toEqual(b);
+    }
+    expect(renderAmbience("nope")).toHaveLength(0);
   });
 });
