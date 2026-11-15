@@ -1,0 +1,14 @@
+{
+  "url": "http://127.0.0.1:4249/?speed=60",
+  "errors": [],
+  "emptySpriteRows": [
+    12,
+    13,
+    14,
+    15,
+    29,
+    30,
+    31
+  ],
+  "foregroundAboveFeet": 0
+}
