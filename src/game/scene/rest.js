@@ -309,6 +309,91 @@ function drawWoodlandFloor(buf, kind) {
   }
 }
 
+function makeForegroundGrass(kind) {
+  const lake = kind === "lake", count = lake ? 112 : 72, seed = lake ? 570 : 571;
+  return Array.from({ length: count }, (_, i) => {
+    const x = rand(seed, i, 1) * W;
+    const y = 153 + rand(seed, i, 2) * 31;
+    let height = 8 + Math.floor(rand(seed, i, 3) * 11);
+    // Keep the heroine's feet readable while letting a few blades cross the sole line.
+    if (Math.abs(x - SEAT_X[kind]) < 22) height = Math.min(height, Math.max(1, Math.floor(y - 151)));
+    // The fire stays legible; low leaves frame its logs from either side.
+    if (Math.abs(x - FIRE_X[kind]) < 15) height = Math.min(height, 4 + Math.floor(rand(seed, i, 5) * 3));
+    return { x, y, height, width: 2 + Math.floor(rand(seed, i, 6) * 4), tone: i % 5, phase: rand(seed, i, 7) * Math.PI * 2 };
+  });
+}
+
+const FOREGROUND_GRASS = Object.fromEntries(REST_KINDS.map((kind) => [kind, makeForegroundGrass(kind)]));
+
+function bakeForegroundGrass(kind) {
+  const buffer = new Uint32Array(W * H), lake = kind === "lake";
+  const colors = lake
+    ? [hex("#263a38"), hex("#3e5540"), hex("#718050")]
+    : [hex("#26332f"), hex("#405040"), hex("#71805c")];
+  const blades = FOREGROUND_GRASS[kind];
+  for (let i = 0; i < blades.length; i++) {
+    if (i % 5 === 0) continue;
+    const { x, y, height, width, tone, phase } = blades[i];
+    const tipX = x + Math.cos(phase) * 2, tipY = y - height;
+    const base = colors[tone === 0 ? 2 : tone < 3 ? 1 : 0];
+    lineBuffer(buffer, x, y, x - 1, y - Math.floor(height * 0.52), base);
+    lineBuffer(buffer, x - 1, y - Math.floor(height * 0.52), tipX, tipY, base);
+    lineBuffer(buffer, x + 1, y, x + 1, y - Math.floor(height * 0.62), colors[0]);
+    if (tone % 3 !== 1) lineBuffer(buffer, x + 2, y, x + width, y - Math.max(2, height * 0.72), base);
+    if (height > 11 || tone === 0) putBuffer(buffer, tipX, tipY, colors[2]);
+    if (tone === 0 && height > 9) {
+      lineBuffer(buffer, x - 1, y - 3, x - 4, y - 5, colors[1]);
+      lineBuffer(buffer, x + 1, y - 6, x + 4, y - 8, colors[1]);
+    }
+  }
+  for (let i = 0; i < 19; i++) {
+    const x = rand(lake ? 572 : 573, i, 1) * W, y = 161 + rand(lake ? 572 : 573, i, 2) * 18;
+    putBuffer(buffer, x, y, colors[1]); putBuffer(buffer, x - 2, y - 1, colors[1]); putBuffer(buffer, x + 2, y - 1, colors[1]);
+    if (i % 6 === 0) putBuffer(buffer, x + 1, y - 4, hex("#b9a06a"));
+  }
+  const indices = [];
+  for (let i = 0; i < buffer.length; i++) if (buffer[i]) indices.push(i);
+  return { buffer, indices };
+}
+
+const BAKED_GRASS = Object.fromEntries(REST_KINDS.map((kind) => [kind, bakeForegroundGrass(kind)]));
+
+function drawForegroundGrass(p, kind, time, fireX, lit, flash) {
+  const lake = kind === "lake";
+  const cool = lake ? [hex("#263a38"), hex("#3e5540"), hex("#718050")] : [hex("#26332f"), hex("#405040"), hex("#71805c")];
+  const warm = lake ? [hex("#46513b"), hex("#9a7547"), hex("#f4bc63")] : [hex("#3d4137"), hex("#8a6945"), hex("#e6a44f")];
+  const flicker = lit ? 0.78 + Math.sin(time * 8.3) * 0.12 + Math.sin(time * 13.1) * 0.08 : 0;
+  const baked = BAKED_GRASS[kind];
+  for (const index of baked.indices) p.frame.color[index] = baked.buffer[index];
+  // The ground stays cool beyond the fire's reach; only nearby blade edges catch its pulse.
+  if (lit) p.glow(fireX, 166, lake ? 54 : 45, lake ? hex("#d88b45") : hex("#bf7540"), (lake ? 0.12 : 0.09) * flicker);
+  for (let i = 0; i < FOREGROUND_GRASS[kind].length; i++) {
+    const blade = FOREGROUND_GRASS[kind][i];
+    const { x, y, height, width, tone, phase } = blade;
+    const sway = i % 5 === 0 ? Math.sin(time * 0.46 + phase) * 0.8 : 0;
+    const tipX = x + Math.cos(phase) * 2 + sway;
+    const tipY = y - height;
+    const distance = Math.abs(x - fireX);
+    const fireReach = Math.max(0, 1 - distance / (lake ? 112 : 88)) * flicker;
+    const lightning = kind === "storm" ? flash * 0.6 : 0;
+    const base = cool[tone === 0 ? 2 : tone < 3 ? 1 : 0];
+    const edge = warm[Math.min(2, Math.floor(fireReach * 2.8))];
+    const highlight = mix(cool[2], warm[2], Math.min(1, fireReach * 0.9 + lightning * 0.55));
+    if (i % 5 === 0) {
+      const body = mix(base, edge, fireReach * 0.56 + lightning * 0.18);
+      const bendX = x + sway * 0.45;
+      p.line(x, y, bendX - 1, y - Math.floor(height * 0.52), body);
+      p.line(bendX - 1, y - Math.floor(height * 0.52), tipX, tipY, body);
+      p.line(x + 1, y, x + 1 + sway * 0.5, y - Math.floor(height * 0.62), cool[0]);
+      if (tone % 3 !== 1) p.line(x + 2, y, x + width, y - Math.max(2, height * 0.72), body);
+      if (height > 11 || tone === 0) p.px(Math.round(tipX), tipY, fireReach > 0.2 || lightning > 0.2 ? highlight : cool[2]);
+    } else if (height > 11 || tone === 0) {
+      // Static stems are baked; only their exposed tips respond to the moving light.
+      if (fireReach > 0.16 || lightning > 0.14) p.px(Math.round(x + Math.cos(phase) * 2), tipY, highlight);
+    }
+  }
+}
+
 function discInto(buf, cx, cy, r, c) {
   if (!r) return;
   for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r) buf[(cy + y) * W + cx + x] = c;
@@ -626,6 +711,7 @@ export function createRest(kind, { night = false } = {}) {
         drawStormPuddles(p);
         drawRain(p, true);
       }
+      drawForegroundGrass(p, kind, time, fireX, lit, flash);
       if (lit) fire.draw(frame, "front");
     },
   };
