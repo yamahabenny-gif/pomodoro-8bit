@@ -3,6 +3,7 @@ import { createFrame, hex } from "pixelfx/core/index.js";
 import { createHeroine, heroinePose, swordPose } from "../src/game/heroine/heroine.js";
 
 const ANIMS = ["idle", "walk", "attack1", "attack2", "attack3", "hurt", "victory", "sitDown", "sit", "standUp", "lightFire", "levelUp"];
+const ANIM_DURATIONS = { attack1: 0.68, attack2: 0.72, attack3: 0.84, hurt: 0.38, victory: 0.9, sitDown: 0.65, standUp: 0.62, lightFire: 1.25, levelUp: 1.2 };
 
 describe("heroine", () => {
   it.each(ANIMS)("draws %s without throwing", (name) => {
@@ -104,6 +105,45 @@ describe("heroine", () => {
   });
 
   it("updates reach for the longer knight sword", () => {
-    expect(createHeroine().reach).toBe(26);
+    expect(createHeroine().reach).toBe(40);
+  });
+});
+
+// The old row remapping left four transparent rows between head and armour.
+describe("heroine silhouette regression", () => {
+  it.each(ANIMS)("keeps %s continuous and inside its sprite canvas", (name) => {
+    for (let step = 0; step < 16; step++) {
+      const duration = ANIM_DURATIONS[name] ?? 0.34;
+      const { rows } = heroinePose(name, duration * step / 15);
+      const occupied = rows.map((row, y) => row.includes("k") ? y : -1).filter((y) => y >= 0);
+      expect(occupied[0]).toBeGreaterThan(0);
+      expect(occupied.at(-1)).toBeLessThan(rows.length - 1);
+      for (let y = occupied[0]; y <= occupied.at(-1); y++) {
+        expect(rows[y]).not.toMatch(/^\.+$/);
+        expect(rows[y].slice(14, 28)).not.toMatch(/^\.+$/);
+      }
+      for (const row of rows) {
+        expect(row[0]).toBe(".");
+        expect(row.at(-1)).toBe(".");
+      }
+    }
+  });
+
+  it("stands 36 pixels tall with a large blue-eyed face", () => {
+    const { rows } = heroinePose("idle");
+    const occupied = rows.map((row, y) => row !== ".".repeat(row.length) ? y : -1).filter((y) => y >= 0);
+    expect(occupied.at(-1) - occupied[0] + 1).toBe(36);
+    expect(rows.join("").split("E").length - 1).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps the same sword length through combat and celebration", () => {
+    for (const name of ["idle", "walk", "attack1", "attack2", "attack3", "hurt", "victory", "levelUp"]) {
+      for (const progress of [0, 0.25, 0.5, 0.75]) {
+        const { hand } = heroinePose(name, progress * 0.6);
+        const { grip, tip } = swordPose(name, progress, hand);
+        expect(Math.hypot(tip.x - grip.x, tip.y - grip.y)).toBeGreaterThan(17);
+        expect(Math.hypot(tip.x - grip.x, tip.y - grip.y)).toBeLessThan(19);
+      }
+    }
   });
 });

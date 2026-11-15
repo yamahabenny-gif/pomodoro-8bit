@@ -8,25 +8,29 @@
 //   anim                         current anim name
 //   update(dt)
 //   draw(frame)                  draws with pixelfx painterFor(frame)
-//   reach                        26 px in front of her feet where a sword hit lands
-//   WAVE 4 (issue "Heldin neu"): brown long hair (ponytail), silver-blue plate
+//   reach                        40 px in front of her feet where a sword hit lands
+//   WAVE 4 (issue "Heldin neu"): brown long loose hair, silver-blue plate
 //   armour, red cape, small crown-helm, sword; still faces right. New anims: "lightFire" (kneel, strike flint,
 //   onHit at the spark that lights the fire, onDone when she sits back) and "levelUp" (sword raised, short glow).
+//   WAVE 7: 36 px standing silhouette (up to 37 px with gait), origin (-20, -38); reach 40.
+//   Sword: 18 px grip-to-tip, with a shorter flint striker during lightFire.
+//   Rest uses the scene-owned seatX unchanged: rump is at (x + 1, y - 8), stump at (x - 15, y - 8).
 //   heroinePose(anim, elapsed) and swordPose(anim, progress, hand, seated) are pixel-coordinate helpers for tests.
 
 import { hex, painterFor } from "pixelfx/core/index.js";
 
 const INK = "#17121f";
+// Light falls from the upper left; each material uses three or four flat tones.
 const PALETTE = {
-  k: INK, h: "#713a2d", H: "#a95d3d", J: "#d18a4e", s: "#f1bf91", S: "#cf866b",
-  w: "#fff0d5", e: "#302137", t: "#376c73", T: "#67a69a", u: "#274650",
-  b: "#e5b85b", o: "#45334a", O: "#80505a", c: "#f53cd1", C: "#ff8fe6",
-  x: "#c9d4e0", X: "#eef3f7", d: "#5d7fa8", g: "#efc45e", l: "#754a35", L: "#a8734b",
-  r: "#b8283a", R: "#7a1830", q: "#e04a50", m: "#3a4f6e",
+  k: INK, h: "#57312f", H: "#925033", J: "#ce894b",
+  s: "#f5c3a5", S: "#d88e83", w: "#fff1d6", e: "#244b7c", E: "#58a5cf",
+  x: "#c9d4e0", X: "#eef3f7", d: "#7796ac", m: "#3b506a",
+  g: "#eac466", b: "#967042", r: "#b6324e", R: "#64233c", q: "#e65a69",
+  l: "#754a35", L: "#a8734b", c: "#d88e83", C: "#fff1d6",
 };
-const PIXEL_CODE = { k: "k", hair: "h", hairL: "H", hairH: "J", skin: "s", skinS: "S", white: "w", eye: "e", tunic: "t", tunicL: "T", tunicS: "u", belt: "b", boot: "o", bootL: "O", cape: "r", capeS: "R", capeL: "q", steel: "x", steelL: "X", steelS: "d", armourS: "m", gold: "g" };
 const color = (name) => hex(PALETTE[name]);
-const SIT_STUMP_OFFSET_X = -7; // Keep a wood edge visible below the seated armour.
+const ORIGIN_X = -20, ORIGIN_Y = -38;
+const SIT_STUMP_OFFSET_X = -15;
 const SIT_STUMP = [".kkkkkkkkkkkkkkkkk.", "klllllllllllllllllk", "klllllLlllllllllllk", "klllllLlllllllllllk", ".kkkkkkkkkkkkkkkkk."];
 const ONE_SHOTS = {
   attack1: { duration: 0.68, hit: 0.39 },
@@ -39,34 +43,14 @@ const ONE_SHOTS = {
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 const smooth = (n) => { n = clamp01(n); return n * n * (3 - 2 * n); };
 
-// A tiny pixel canvas keeps the heroine's silhouette crisp at the stage's native resolution.
+// Draw in one continuous coordinate space: no row remapping between head and torso.
 function makeBody(anim, t) {
-  const w = 32, h = 32, px = Array.from({ length: h }, () => Array(w).fill("."));
-  const bodyY = (y) => y >= 12 ? y + 4 : y;
-  const put = (x, y, c) => { y = bodyY(y); if (x >= 0 && y >= 0 && x < w && y < h) px[y][x] = c; };
+  const w = 48, h = 42, px = Array.from({ length: h }, () => Array(w).fill("."));
+  const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < w && y < h) px[y][x] = c; };
   const rect = (x, y, rw, rh, c) => { for (let j = 0; j < rh; j++) for (let i = 0; i < rw; i++) put(x + i, y + j, c); };
-  const ellipse = (cx, cy, rx, ry, c) => {
-    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
-      if (d <= 1) put(x, y, c);
-    }
-  };
-  const outlineEllipse = (cx, cy, rx, ry, fill, edge = "k") => {
-    ellipse(cx, cy, rx + 1, ry + 1, edge);
-    ellipse(cx, cy, rx, ry, fill);
-  };
-
-  const walk = anim === "walk", seated = anim === "sit" || (anim === "sitDown" && t >= 0.24) || (anim === "standUp" && t < 0.24);
-  const kneeling = anim === "lightFire";
-  const phase = Math.floor(t * 12) & 3;
-  const bob = walk ? [0, 1, 0, -1][phase] : anim === "idle" || anim === "sit" ? (phase >= 2 ? -1 : 0) : 0;
-  const attackProgress = ONE_SHOTS[anim] ? clamp01(t / ONE_SHOTS[anim].duration) : 0;
-  const lean = anim === "attack2" ? 2 : anim === "attack3" ? 3 : anim === "hurt" ? -2 : seated ? 1 : kneeling ? 2 : 0;
-  const ox = lean;
-  const headOx = ox + (seated ? 2 : 0), headBob = bob + (seated ? 2 : 0) + (kneeling ? 1 : 0);
-
   const line = (x0, y0, x1, y1, c) => {
-    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1, error = dx + dy;
+    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let error = dx + dy;
     for (;;) {
       put(x0, y0, c);
       if (x0 === x1 && y0 === y1) break;
@@ -75,139 +59,152 @@ function makeBody(anim, t) {
       if (twice <= dx) { error += dx; y0 += sy; }
     }
   };
+  const stamp = (rows, x, y) => rows.forEach((row, j) => [...row].forEach((c, i) => { if (c !== ".") put(x + i, y + j, c); }));
+  const walk = anim === "walk";
+  const seated = anim === "sit" || (anim === "sitDown" && t >= 0.24) || (anim === "standUp" && t < 0.24);
+  const kneeling = anim === "lightFire";
+  const phase = Math.floor(t * 12) & 3;
+  const bob = walk ? [0, 1, 0, -1][phase] : (anim === "idle" || anim === "sit") && phase >= 2 ? -1 : 0;
+  const progress = ONE_SHOTS[anim] ? clamp01(t / ONE_SHOTS[anim].duration) : 0;
+  const ox = anim === "attack2" ? 2 : anim === "attack3" ? 3 : anim === "hurt" ? -2 : seated ? 1 : kneeling ? 2 : 0;
+  const oy = bob + (seated ? 5 : kneeling ? 4 : 0);
 
-  // Cape and ponytail sit behind the armour and move on held animation steps.
-  const capeFlutter = walk ? [0, 1, 2, 1][phase] : anim.startsWith("attack") ? [1, 2, 3, 1][phase] : anim === "idle" ? phase & 1 : 0;
-  const capeRows = [[5, 8], [4, 8], [3, 8], [3, 8], [2, 8], [2, 8], [1, 7], [1, 7], [0, 6], [0, 6], [1, 7], [1, 7], [2, 8]];
-  capeRows.forEach(([left, right], row) => {
-    const trail = row > 7 ? capeFlutter : 0;
-    const y = 12 + row + (trail ? Math.min(trail, row - 7) : 0);
-    const x0 = Math.max(0, left - trail + ox), x1 = right - trail + ox;
-    put(x0, y, "k"); put(x1, y, "k");
-    for (let x = x0 + 1; x < x1; x++) put(x, y, row > 8 && x < x0 + 3 ? "capeS" : "cape");
-    if (row > 1 && row < 11) put(x0 + 2, y, "capeL");
+  // Folded cloth broadens below the hip, then turns back at the hem.
+  const flutter = walk || anim.startsWith("attack") ? [0, 1, 2, 1][phase] : phase & 1;
+  const capeEdges = [12, 11, 10, 10, 10, 9, 9, 9, 8, 7, 6, 6, 6, 7, 8, 10, 12];
+  capeEdges.forEach((edge, row) => {
+    const tail = row > 9 ? flutter : 0;
+    const left = edge - tail + ox, right = 24 + ox;
+    const py = 17 + row + Math.min(oy, 3);
+    line(left, py, right, py, "k");
+    for (let x = left + 1; x < right; x++) put(x, py, row < 4 || x < left + 3 ? "R" : "r");
+    if (row < 15) put(left + 2, py, "q");
+    if (row > 5) put(left + 5, py, "R");
   });
-  // Ponytail tips swing on held 12 fps steps.
-  const swing = walk ? [0, 1, 0, -1][phase] : anim === "idle" ? phase & 1 : 0;
-  outlineEllipse(7 + headOx, 8 + headBob + swing, 3, 4, "hair");
-  put(4 + headOx, 8 + headBob + swing, "hairL"); put(5 + headOx, 11 + headBob + swing, "hairL");
-  put(6 + headOx, 12 + headBob + swing, "hair");
-  const hairSwing = walk ? [0, 1, 2, 1][phase] : anim.startsWith("attack") ? [0, 1, 2, 0][phase] : anim === "idle" ? phase & 1 : 0;
-  line(5 + headOx, 9 + headBob, 3 + headOx, 17 + headBob + hairSwing, "k");
-  line(6 + headOx, 9 + headBob, 4 + headOx, 18 + headBob + hairSwing, "hair");
-  line(7 + headOx, 10 + headBob, 5 + headOx, 19 + headBob + hairSwing, "hairL");
-  line(8 + headOx, 11 + headBob, 7 + headOx, 18 + headBob + hairSwing, "hairH");
 
-  // Legs and boots. Alternating feet make the walk loop read at a glance.
-  if (seated) {
-    // Thighs turn forward, then shins fold down to make a clear seated L shape.
-    rect(8 + ox, 19 + bob, 5, 3, "tunicS"); rect(12 + ox, 20 + bob, 7, 2, "tunic");
-    rect(17 + ox, 21 + bob, 3, 3, "tunicS"); rect(7 + ox, 21 + bob, 3, 3, "tunic");
-    rect(16 + ox, 24 + bob, 5, 2, "boot"); rect(5 + ox, 24 + bob, 5, 2, "bootL");
-  } else if (kneeling) {
-    rect(8 + ox, 19 + bob, 5, 3, "tunicS"); rect(13 + ox, 20 + bob, 7, 2, "tunic");
-    rect(7 + ox, 22 + bob, 7, 2, "boot"); rect(15 + ox, 22 + bob, 5, 2, "bootL");
-  } else if (anim === "attack2") {
-    // A wide rear foot and a knee driven forward make the cross-slash read as a lunge.
-    rect(8 + ox, 19 + bob, 4, 5, "tunicS"); rect(12 + ox, 20 + bob, 8, 2, "tunic");
-    rect(18 + ox, 21 + bob, 3, 3, "tunicS");
-    rect(5 + ox, 23 + bob, 6, 2, "boot"); rect(18 + ox, 24 + bob, 5, 2, "bootL");
-  } else if (anim === "attack3") {
-    // Both legs trail the forward dash in a compact airborne stride.
-    rect(8 + ox, 19 + bob, 5, 3, "tunicS"); rect(13 + ox, 20 + bob, 5, 2, "tunic");
-    rect(6 + ox, 22 + bob, 6, 2, "tunicS"); rect(15 + ox, 22 + bob, 6, 2, "tunic");
-    rect(4 + ox, 24 + bob, 5, 2, "boot"); rect(17 + ox, 24 + bob, 5, 2, "bootL");
+  // Feet remain on the baseline while the torso compresses during a step.
+  const boot = (x, y) => stamp([
+    "kggmk", "kdxmk", "kdxmk", "kdxmk", "kxxxkk", "kXxddk", "kRRRkk",
+  ], x, y);
+  if (seated || kneeling) {
+    rect(17 + ox, 30, 13, 3, "k"); rect(18 + ox, 30, 10, 2, "m");
+    boot(24 + ox, 31); boot(15 + ox, 31);
   } else if (walk) {
-    // Four held gait drawings: contact, compression, pass, and the opposite high step.
-    if (phase === 0) {
-      rect(8 + ox, 19 + bob, 4, 5, "tunicS"); rect(13 + ox, 18 + bob, 4, 4, "tunic");
-      rect(5 + ox, 23 + bob, 6, 2, "boot"); rect(15 + ox, 22 + bob, 6, 2, "bootL");
-    } else if (phase === 1) {
-      rect(9 + ox, 19 + bob, 4, 5, "tunicS"); rect(13 + ox, 19 + bob, 4, 5, "tunic");
-      rect(8 + ox, 24 + bob, 6, 2, "boot"); rect(13 + ox, 24 + bob, 6, 2, "bootL");
-    } else if (phase === 2) {
-      rect(9 + ox, 19 + bob, 4, 4, "tunicS"); rect(14 + ox, 18 + bob, 4, 3, "tunic");
-      rect(9 + ox, 23 + bob, 6, 2, "boot"); rect(15 + ox, 20 + bob, 6, 2, "bootL");
-    } else {
-      rect(9 + ox, 18 + bob, 4, 4, "tunicS"); rect(13 + ox, 19 + bob, 4, 5, "tunic");
-      rect(6 + ox, 21 + bob, 6, 2, "boot"); rect(13 + ox, 23 + bob, 6, 2, "bootL");
-    }
+    const feet = [[12, 31, 23, 29], [16, 31, 22, 31], [17, 31, 24, 27], [12, 28, 21, 31]][phase];
+    line(18 + ox, 28 + bob, feet[0] + 2 + ox, feet[1] + 1, "m");
+    line(23 + ox, 28 + bob, feet[2] + 2 + ox, feet[3] + 1, "m");
+    boot(feet[0] + ox, feet[1]); boot(feet[2] + ox, feet[3]);
+  } else if (anim === "attack2" || anim === "attack3") {
+    rect(14 + ox, 28, 5, 5, "m"); rect(22 + ox, 28, 8, 4, "m");
+    boot(11 + ox, 31); boot(26 + ox, anim === "attack3" ? 29 : 31);
   } else {
-    rect(9 + ox, 19 + bob, 3, 4, "tunicS");
-    rect(13 + ox, 19 + bob, 3, 4, "tunic");
-    rect(8 + ox, 23 + bob, 5, 2, "boot");
-    rect(12 + ox, 23 + bob, 5, 2, "bootL");
-    put(9 + ox, 23 + bob, "gold"); put(13 + ox, 23 + bob, "gold");
+    boot(15 + ox, 31); boot(22 + ox, 31);
   }
 
-  // Rounded pauldrons, a bright chestplate, gold belt and patterned chain skirt.
-  outlineEllipse(9 + ox, 14 + bob, 2, 2, "steelS");
-  put(9 + ox, 13 + bob, "steelL");
-  outlineEllipse(16 + ox, 14 + bob, 2, 2, "steel");
-  put(16 + ox, 13 + bob, "steelL");
-  outlineEllipse(12 + ox, 15 + bob, 3, 3, "steel");
-  line(10 + ox, 14 + bob, 11 + ox, 13 + bob, "steelL");
-  line(14 + ox, 14 + bob, 14 + ox, 16 + bob, "armourS");
-  put(12 + ox, 15 + bob, "white"); put(13 + ox, 15 + bob, "steelL");
-  rect(8 + ox, 18 + bob, 9, 2, "k"); rect(9 + ox, 18 + bob, 7, 1, "belt");
-  put(13 + ox, 18 + bob, "gold"); put(14 + ox, 18 + bob, "gold");
-  rect(9 + ox, 20 + bob, 7, 3, "armourS");
-  for (let row = 0; row < 3; row++) for (let col = 0; col < 7; col++) {
-    put(9 + ox + col, 20 + bob + row, (row + col) % 2 ? "steel" : "steelL");
-  }
-  line(9 + ox, 23 + bob, 16 + ox, 23 + bob, "k");
+  // Loose brown locks extend past both shoulders, behind the face and pauldrons.
+  stamp([
+    ".kkkkkkkkkkk.",
+    "khHHHHHHHHHhk",
+    "khJHHHHHHHHhk",
+    "khJHHHHHHHHhk",
+    "khJHHHHHHHHhk",
+    "khHHHHHHHHHhk",
+    "khHHHHHHHHHhk",
+    "khHHHHHHHHHhk",
+    ".khHHHHHHHhk.",
+    "..khHHHHHhk..",
+  ], 13 + ox, 11 + oy);
 
-  // Arm, shoulder and hand. Its angle changes with each sword beat.
-  let arm = [18 + ox, 16 + bob, 20 + ox, 15 + bob];
-  if (walk) arm = [[18, 15, 20, 15], [19, 14, 21, 13], [18, 16, 20, 17], [17, 15, 19, 16]][phase].map((v, i) => v + (i % 2 ? bob : ox));
-  if (anim === "attack1") arm = attackProgress < 0.42 ? [18 + ox, 8 + bob, 17 + ox, 3 + bob] : [19 + ox, 14 + bob, 22 + ox, 18 + bob];
-  if (anim === "attack2") arm = [20 + ox, 15 + bob, 24 + ox, 14 + bob];
-  if (anim === "attack3") arm = [21 + ox, 14 + bob, 25 + ox, 13 + bob];
-  if (anim === "victory" || anim === "levelUp") arm = [17 + ox, 8 + bob, 18 + ox, 4 + bob];
-  if (kneeling) arm = [19 + ox, 17 + bob, 20 + ox, 21 + bob];
-  if (seated) arm = [17 + ox, 17 + bob, 18 + ox, 20 + bob];
-  rect(15 + ox, 13 + bob, 4, 4, "k");
-  if (walk) {
-    const farArm = [[12, 15, 10, 18], [12, 16, 10, 19], [12, 15, 15, 14], [12, 14, 15, 15]][phase];
-    line(farArm[0] + ox, farArm[1] + bob, farArm[2] + ox, farArm[3] + bob, "k");
-    line(farArm[0] + ox + 1, farArm[1] + bob, farArm[2] + ox + 1, farArm[3] + bob, "skinS");
-  }
-  line(17 + ox, 14 + bob, arm[0], arm[1], "k");
-  line(17 + ox, 15 + bob, arm[0], arm[1] + 1, "skinS");
-  line(arm[0], arm[1], arm[2], arm[3], "k");
-  line(arm[0], arm[1] + 1, arm[2], arm[3] + 1, "skin");
-  rect(arm[2], arm[3], 2, 2, "skin");
-  if (seated) {
-    line(11 + ox, 14 + bob, 12 + ox, 18 + bob, "k");
-    line(12 + ox, 14 + bob, 13 + ox, 18 + bob, "skinS");
-    rect(12 + ox, 19 + bob, 2, 1, "skin");
-  }
+  // Silver breastplate, waist and a flared mail skirt.
+  const torso = [
+    "..kkkkkkkkk..",
+    ".kmddxxdddmk.",
+    "kmdxXXxxddmk.",
+    "kmdxXXxxddmk.",
+    ".kmdxxxddmk..",
+    ".kmmddddmmk..",
+    ".kbbgRgbbbk..",
+    ".kkkgqgkkkk..",
+    ".kmxxxxxxmk..",
+    "kmxXxXxXxXmk.",
+    "kmXxXxXxXxmk.",
+    "kmxXxXxXxXmk.",
+    ".kggggggggk..",
+    "..kkkkkkkk...",
+  ];
+  stamp(seated || kneeling ? torso.slice(0, 9) : torso, 14 + ox, 18 + oy);
+  if (seated || kneeling) stamp([
+    ".kdxXxXxXxdddk.",
+    "kdxXxXxXxddXxxk",
+    ".kggggggkkgggk.",
+  ], 14 + ox, 30);
 
-  // Face under long auburn hair, turned toward the incoming enemies.
-  outlineEllipse(14 + headOx, 6 + headBob, 4, 5, "skin");
-  rect(10 + headOx, 2 + headBob, 7, 2, "hair");
-  rect(10 + headOx, 3 + headBob, 2, 5, "hair");
-  rect(11 + headOx, 2 + headBob, 6, 2, "hairL");
-  rect(15 + headOx, 3 + headBob, 3, 2, "hair");
-  rect(16 + headOx, 4 + headBob, 2, 2, "hairL");
-  put(15 + headOx, 6 + headBob, "white"); put(16 + headOx, 6 + headBob, "eye");
-  put(15 + headOx, 7 + headBob, "eye"); put(17 + headOx, 8 + headBob, "skinS");
-  put(13 + headOx, 9 + headBob, "skinS");
-  // Small crown helm with a brow guard and gold crest.
-  rect(9 + headOx, 0 + headBob, 9, 2, "steelS");
-  rect(10 + headOx, 0 + headBob, 6, 1, "steelL");
-  put(10 + headOx, 0 + headBob, "gold"); put(11 + headOx, -1 + headBob, "gold");
-  put(12 + headOx, 0 + headBob, "gold"); put(14 + headOx, -1 + headBob, "gold");
-  put(15 + headOx, 0 + headBob, "gold"); put(17 + headOx, 1 + headBob, "steel");
-  rect(17 + headOx, 4 + headBob, 2, 3, "steelS");
-  // Long hair falls over the rear shoulder and flutters with the cape.
-  const looseSwing = walk ? [0, 1, 1, 0][phase] : anim === "idle" ? phase & 1 : 0;
-  line(17 + headOx, 8 + headBob, 19 + headOx, 13 + headBob + looseSwing, "k");
-  line(18 + headOx, 8 + headBob, 20 + headOx, 12 + headBob + looseSwing, "hair");
-  line(19 + headOx, 11 + headBob + looseSwing, 17 + headOx, 14 + headBob + looseSwing, "hairL");
 
-  const posedArm = [arm[0], bodyY(arm[1]), arm[2], bodyY(arm[3])];
-  return { rows: px.map((row) => row.map((color) => PIXEL_CODE[color] ?? ".").join("")), arm: posedArm };
+  stamp([".g.", "gqg", ".R."], 20 + ox, 19 + oy);
+  // Long locks frame the jaw and fall behind the broad shoulder plates.
+  stamp([".kk..", "khHk.", "khJHk", "khHHk", ".khHk", "..khHk", "...khHk", "....kk."], 9 + ox, 12 + oy);
+  stamp(["..kk.", ".kHHk", "kHHJk", "kHHHk", "kHhk.", "kHhk..", "kHhk...", ".kk...."], 27 + ox, 12 + oy);
+  stamp([
+    "..kkkk...",
+    ".kmddxkk.",
+    "kmxXXxdmk",
+    "kdxXxxddk",
+    ".kddddk..",
+  ], 7 + ox, 19 + oy);
+  stamp([
+    "...kkkk..",
+    ".kkxddmk.",
+    "kmdxxXXxm",
+    "kddxxXxdk",
+    "..kddddk.",
+  ], 25 + ox, 19 + oy);
+
+  // Gauntlet and blade share the same grip coordinate in every pose.
+  let arm = [28 + ox, 22 + oy, 31 + ox, 22 + oy];
+  if (walk) arm = [28 + ox, 22 + oy, 31 + ox, 22 + oy + [0, -1, 1, 0][phase]];
+  if (anim === "attack1") arm = progress < 0.38 ? [29 + ox, 15 + oy, 29 + ox, 10 + oy] : [29 + ox, 22 + oy, 32 + ox, 25 + oy];
+  if (anim === "attack2") arm = [29 + ox, 21 + oy, 33 + ox, 21 + oy];
+  if (anim === "attack3") arm = [30 + ox, 21 + oy, 34 + ox, 20 + oy];
+  if (anim === "victory" || anim === "levelUp") arm = [29 + ox, 15 + oy, 30 + ox, 10 + oy];
+  if (kneeling) arm = [29 + ox, 25 + oy, 32 + ox, 28 + oy];
+  if (seated) arm = [28 + ox, 23 + oy, 29 + ox, 26 + oy];
+  for (const [dx, dy, c] of [[0, 0, "k"], [0, 1, "m"], [1, 0, "d"]]) {
+    line(26 + ox + dx, 20 + oy + dy, arm[0] + dx, arm[1] + dy, c);
+    line(arm[0] + dx, arm[1] + dy, arm[2] + dx, arm[3] + dy, c);
+  }
+  rect(arm[2] - 1, arm[3] - 1, 4, 4, "k");
+  rect(arm[2], arm[3], 2, 2, "x");
+  put(arm[2], arm[3], "X");
+  stamp(["..kkk..", ".kXxxk.", "kXxxddk", "kxdddmk", ".kgggk."], 10 + ox, 18 + oy);
+  stamp(["..kkk..", ".kXxxk.", "kXxxddk", "kxdddmk", ".kgggk."], 24 + ox, 18 + oy);
+
+  // Crown, swept fringe and two large blue eyes, in a right-facing three-quarter view.
+  stamp([
+    ".......kgk.......",
+    "..gk..kgXgk..kg..",
+    "..kggkgxXxgkggk..",
+    "..kdXxggrggxmdk..",
+    "..kdxXgRqRgxmdk..",
+    "..kdxxggRggddmk..",
+    "..kdgggggggdmmk..",
+    "..khJJHHHHHhmmk..",
+    "..khJHHHssssHmk..",
+    "..khHHsssssHsdk..",
+    "..khHswessweSdk..",
+    "..khHsEessEeSdk..",
+    "..khHsEessEeSk...",
+    "...kSSssssSSk....",
+    "....ksssSssk.....",
+    ".....kkkkkk......",
+  ], 12 + ox, 2 + oy);
+  put(17 + ox, 14 + oy, "E"); put(23 + ox, 14 + oy, "E");
+  put(18 + ox, 14 + oy, "c"); put(24 + ox, 14 + oy, "c");
+  put(21 + ox, 16 + oy, "h");
+  // Neck joins head and breastplate on every held pose.
+  rect(19 + ox, 17 + oy, 5, 2, "m");
+  put(21 + ox, 18 + oy, "g");
+
+  return { rows: px.map((row) => row.join("")), arm };
 }
 
 export function heroinePose(anim, elapsed = 0) {
@@ -233,24 +230,30 @@ export function swordPose(anim, progress, hand, seated = false) {
   } else if (anim === "hurt") {
     tip = { x: handX + 4, y: handY + 4 };
   } else {
-    tip = { x: handX + 7, y: handY - 7 };
+    tip = { x: handX + 1, y: handY - 20 };
+  }
+  if (anim !== "lightFire") {
+    const dx = tip.x - handX, dy = tip.y - handY, length = Math.hypot(dx, dy);
+    tip = { x: handX + Math.round(dx * 18 / length), y: handY + Math.round(dy * 18 / length) };
   }
   return { grip: { x: handX, y: handY }, tip };
 }
 
 function drawLyingSword(p) {
   // Rest beside the stump at ground level, clear of the bent boots.
-  p.line(-24, -2, -14, -2, color("d"));
-  p.line(-24, -3, -14, -3, color("x"));
-  p.line(-15, -4, -15, 0, color("g"));
-  p.line(-26, -3, -24, -2, color("k"));
+  p.line(-30, -2, -12, -2, color("k"));
+  p.line(-29, -3, -15, -3, color("x"));
+  p.line(-28, -4, -15, -4, color("X"));
+  p.line(-14, -6, -14, -1, color("k"));
+  p.line(-14, -5, -14, -2, color("g"));
+  p.line(-13, -3, -11, -3, color("h"));
 }
 
 /** Create the heroine at a feet position in stage pixels. */
 export function createHeroine({ x = 0, y = 0 } = {}) {
   let anim = "idle", elapsed = 0, loopTime = 0, onHit = null, onDone = null, hitFired = false, doneFired = false;
   const heroine = {
-    x, y, anim, reach: 26,
+    x, y, anim, reach: 40,
     play(name, callbacks = {}) {
       const allowed = ["idle", "walk", ...Object.keys(ONE_SHOTS), "sit"];
       if (!allowed.includes(name)) throw new RangeError(`Unknown heroine animation: ${name}`);
@@ -302,7 +305,7 @@ export function createHeroine({ x = 0, y = 0 } = {}) {
       }
       if (anim === "victory") lift = 4 * Math.sin(Math.PI * progress);
       p.place(heroine.x + shiftX, heroine.y - lift);
-      p.sprite(pose.rows, PALETTE, -12, -30);
+      p.sprite(pose.rows, PALETTE, ORIGIN_X, ORIGIN_Y);
       if (anim === "lightFire") {
         const sparks = elapsed >= 0.62 && elapsed <= 0.94;
         p.line(9, -4, 14, -4, color("l"));
@@ -321,28 +324,36 @@ export function createHeroine({ x = 0, y = 0 } = {}) {
       }
       if (anim === "levelUp") {
         const pulse = 0.48 + 0.5 * Math.sin(Math.PI * progress);
-        p.line(2, -27, 2, -19, color("g"), pulse);
-        p.line(3, -25, 3, -18, color("X"), pulse);
-        p.line(-1, -23, 5, -23, color("g"), pulse);
-        p.line(0, -17, 4, -17, color("X"), pulse);
-        if (progress < 0.7) {
-          p.line(-3, -20, -2, -22, color("g"), pulse);
-          p.line(6, -19, 7, -21, color("X"), pulse);
-          p.line(3, -15, 3, -12, color("g"), pulse);
+        // Keep the celebration around the armour, never across the eyes.
+        for (const [sx, sy] of [[-13, -34], [18, -27], [-16, -17]]) {
+          p.line(sx - 1, sy, sx + 1, sy, color("g"), pulse);
+          p.line(sx, sy - 2, sx, sy + 2, color("X"), pulse);
         }
+        p.line(-8, -4, -3, -4, color("g"), pulse);
       }
       if (seated) {
         drawLyingSword(p);
       } else {
         const weapon = swordPose(anim, progress, pose.hand, seated);
         const { grip, tip } = weapon;
-        const sword = (x, y) => [x - 12, y - 30];
+        const sword = (x, y) => [x + ORIGIN_X, y + ORIGIN_Y];
         const [hiltX, hiltY] = sword(grip.x, grip.y), [bladeX, bladeY] = sword(tip.x, tip.y);
-        p.line(hiltX, hiltY, hiltX + 1, hiltY + 1, color("k"));
-        p.line(hiltX + 1, hiltY, hiltX + 2, hiltY + 1, color("g"));
-        p.line(hiltX + 2, hiltY, bladeX, bladeY, color("d"));
-        p.line(hiltX + 2, hiltY - 1, bladeX, bladeY - 1, color("x"));
-        p.line(bladeX, bladeY - 1, bladeX + 1, bladeY - 2, color("X"));
+        const dx = bladeX - hiltX, dy = bladeY - hiltY;
+        const length = Math.hypot(dx, dy);
+        const ux = dx / length, uy = dy / length, nx = -uy, ny = ux;
+        const at = (along, across = 0) => [Math.round(hiltX + ux * along + nx * across), Math.round(hiltY + uy * along + ny * across)];
+        const stroke = (a, b, tone) => p.line(...a, ...b, color(tone));
+        // Tapered three-pixel blade and a crossguard perpendicular to the blade.
+        for (const offset of [-2, -1, 0, 1, 2]) stroke(at(4, offset), at(length, 0), "k");
+        stroke(at(4, -1), at(length - 1), "X");
+        stroke(at(4), at(length - 1), "x");
+        stroke(at(4, 1), at(length - 2), "d");
+        stroke(at(-2), at(2), "h");
+        stroke(at(2, -4), at(2, 4), "k");
+        stroke(at(2, -3), at(2, 3), "g");
+        stroke(at(-2, -1), at(-2, 1), "g");
+        // The closed gauntlet stays visible over the grip.
+        stroke(at(0, -1), at(0, 1), "x");
       }
       if (anim.startsWith("attack")) {
         const impactFrame = Math.floor(elapsed * 12);
