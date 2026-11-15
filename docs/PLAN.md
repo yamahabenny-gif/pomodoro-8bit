@@ -103,14 +103,14 @@ eine Level-Up-Leiste, die mit den Fokusminuten wächst.
 
 | # | Paket | Worker | Modell | Welle |
 |---|---|---|---|---|
-| 23 | Wald-Reise (Kampf-Look nach Referenz 1) | Codex | `gpt-6-luna` | 4 |
-| 24 | Rast-Szenen: Gewitter-Unterschlupf, See | Codex | `gpt-6-luna` | 4 |
-| 25 | Heldin neu (Referenz 5) + lightFire, levelUp | Codex | `gpt-6-luna` | 4 |
-| 26 | Gegner neu: Halb-Ork (Ref. 2), Steingolem (Ref. 3) | Codex | `gpt-6-luna` | 4 |
-| 27 | Level-Up: Fortschritt + XP-Leiste im HUD | OpenCode | `opencode-go/deepseek-v4.1-flash` | 4 |
-| 28 | Sound 2: levelUp, Donner, Entzünden, Regen/See | OpenCode | `opencode-go/deepseek-v4.1-flash` | 4 |
-| 29 | Regie 2: alles verdrahten, doppelte Gegnerfrequenz | Codex | `gpt-6-luna` | 5 |
-| 30 | QA 2, Deploy | OpenCode | `opencode-go/deepseek-v4.1-flash` | 6 |
+| 24 | Wald-Reise (Kampf-Look nach Referenz 1) | Codex | `gpt-6-luna` | 4 |
+| 25 | Rast-Szenen: Gewitter-Unterschlupf, See | Codex | `gpt-6-luna` | 4 |
+| 26 | Heldin neu (Referenz 5) + lightFire, levelUp | Codex | `gpt-6-luna` | 4 |
+| 27 | Gegner neu: Halb-Ork (Ref. 2), Steingolem (Ref. 3) | Codex | `gpt-6-luna` | 4 |
+| 28 | Level-Up: Fortschritt + XP-Leiste im HUD | OpenCode | `opencode-go/deepseek-v4.1-flash` | 4 |
+| 29 | Sound 2: levelUp, Donner, Entzünden, Regen/See | OpenCode | `opencode-go/deepseek-v4.1-flash` | 4 |
+| 30 | Regie 2: alles verdrahten, doppelte Gegnerfrequenz | Codex | `gpt-6-luna` | 5 |
+| 31 | QA 2, Deploy | OpenCode | `opencode-go/deepseek-v4.1-flash` | 6 |
 
 Neue Verträge: `src/game/scene/rest.js`, `src/game/progress/progress.js`; Erweiterungen als `WAVE 4/5`-Absätze in
 den bestehenden CONTRACT-Kommentaren.
