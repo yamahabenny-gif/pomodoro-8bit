@@ -49,7 +49,7 @@ export default function (frame, t) {
   let hit = false, killed = false;
   const dt = 1 / 60;
   for (let now = 0; now < t; now += dt) {
-    if (now >= 0.55) enemies.forEach((enemy) => enemy.attack());
+    if (now >= 0.1) enemies.forEach((enemy) => enemy.attack());
     if (now >= 0.65 && !hit) {
       enemies.forEach((enemy) => enemy.hit(1));
       hit = true;
