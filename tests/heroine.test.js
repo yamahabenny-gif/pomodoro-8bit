@@ -80,7 +80,7 @@ describe("heroine", () => {
     heroine.draw(frame);
     const pixels = Array.from(frame.color);
     expect(pixels.filter((pixel) => pixel === (hex("#754a35") >>> 0)).length).toBeGreaterThan(0);
-    expect(pixels.filter((pixel) => pixel === (hex("#b8d1dc") >>> 0)).length).toBeGreaterThan(0);
+    expect(pixels.filter((pixel) => pixel === (hex("#c9d4e0") >>> 0)).length).toBeGreaterThan(0);
   });
 
   it("keeps the sword grip within one pixel of the hand at every animation sample", () => {
@@ -104,6 +104,6 @@ describe("heroine", () => {
   });
 
   it("updates reach for the longer knight sword", () => {
-    expect(createHeroine().reach).toBe(24);
+    expect(createHeroine().reach).toBe(26);
   });
 });
