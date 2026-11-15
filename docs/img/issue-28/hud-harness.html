@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HUD-Harness: XP-Leiste und Level-Up</title>
+    <!-- Dev-only harness for docs/img/issue-28 screenshots: the real HUD over the real forest scene.
+         Open it through the Vite dev server: /docs/img/issue-28/hud-harness.html?xp=12&levelUp=1 -->
+    <link rel="stylesheet" href="/src/ui/style.css" />
+    <style>
+      body { margin: 0; background: #0d0b14; }
+      #app { position: relative; width: 100vw; height: 100vh; display: grid; place-items: center; overflow: hidden; }
+      #stage { image-rendering: pixelated; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; }
+      #ui { position: absolute; inset: 0; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage" width="320" height="180"></canvas>
+      <div id="ui"></div>
+    </div>
+    <script type="module">
+      import { createStage, GROUND_Y } from "/src/engine/stage.js";
+      import { createForest } from "/src/game/scene/forest.js";
+      import { createHeroine } from "/src/game/heroine/heroine.js";
+      import { createUI } from "/src/ui/ui.js";
+      import { createProgress } from "/src/game/progress/progress.js";
+      import { PRESETS } from "/src/config/presets.js";
+
+      const params = new URLSearchParams(location.search);
+      const num = (name, fallback) => {
+        const raw = params.get(name);
+        if (raw === null || raw === "") return fallback;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : fallback;
+      };
+      const MINUTE = 60_000;
+
+      const stage = createStage(document.getElementById("stage"));
+      const forest = createForest();
+      forest.setMode("fight", { instant: true });
+      const heroine = createHeroine({ x: 112, y: GROUND_Y });
+      heroine.play("walk");
+
+      const progress = createProgress({ storage: null });
+      // Feed fake timer states so the stored XP exists without waiting a real focus phase.
+      const total = 25 * MINUTE;
+      const focus = (minutes) => ({
+        phase: "focus",
+        running: true,
+        remainingMs: Math.max(0, minutes) * MINUTE,
+        totalMs: total,
+        cycle: 1,
+        completedFocus: 0,
+      });
+      let owed = Math.max(0, num("xp", 12));
+      progress.sync(focus(25));
+      while (owed > 0) {
+        const step = Math.min(25, owed);
+        progress.sync(focus(25 - step));
+        owed -= step;
+        if (owed > 0) progress.sync(focus(25));
+      }
+      progress.sync(focus(25 - Math.max(0, num("into", 0))));
+
+      const stats = {
+        kills: {
+          gnome: num("gnome", 3),
+          orc: num("orc", 2),
+          ogre: num("ogre", 1),
+          ...(params.get("golem") === "0" ? {} : { golem: num("golem", 2) }),
+        },
+        focusDone: 3,
+      };
+
+      const ui = createUI(document.getElementById("ui"), { presets: PRESETS });
+      ui.showHud(PRESETS[0]);
+      const phase = params.get("phase") ?? "focus";
+      const state = {
+        phase,
+        running: true,
+        remainingMs: num("remaining", 12 * 60 + 34) * 1000,
+        totalMs: total,
+        cycle: 2,
+        completedFocus: 1,
+        preset: PRESETS[0],
+      };
+      const progressState = progress.state();
+      ui.render(state, stats, progressState);
+      if (params.get("levelUp") === "1") ui.levelUp(progressState.level + 1);
+
+      // Freeze the banner for the screenshot: the blink is a CSS animation, keep it visible.
+      if (params.get("freeze") === "1") {
+        for (const el of document.querySelectorAll(".levelup")) el.style.animation = "none";
+      }
+
+      let t = 0;
+      const loop = (dt) => {
+        t += dt;
+        forest.scroll(18 * dt);
+        forest.update(dt);
+        heroine.update(dt);
+        stage.clear();
+        heroine.draw(stage.frame);
+        forest.drawBack(stage.frame);
+        forest.drawFront(stage.frame);
+        stage.present(forest.background());
+      };
+      let last = performance.now();
+      const step = (now) => {
+        loop(Math.min(0.1, (now - last) / 1000));
+        last = now;
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+      document.fonts.ready.then(() => {
+        window.hudReady = true;
+      });
+    </script>
+  </body>
+</html>

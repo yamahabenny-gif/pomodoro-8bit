@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PRESETS } from "../src/config/presets.js";
-import { cycleMarks, formatTime, phaseLabel, presetLine } from "../src/ui/ui.js";
+import { cycleMarks, formatTime, killKinds, phaseLabel, presetLine, xpLabel } from "../src/ui/ui.js";
 
 describe("formatTime", () => {
   it("prints mm:ss and rounds up so a running clock never shows 00:00 early", () => {
@@ -74,5 +74,32 @@ describe("cycleMarks", () => {
     expect(cycleMarks(undefined, 4)).toEqual([false, false, false, false]);
     expect(cycleMarks(-2, 4)).toEqual([false, false, false, false]);
     expect(cycleMarks(7.9, 4)).toEqual([true, true, true, false]);
+  });
+});
+
+describe("xpLabel", () => {
+  it("shows minutes into the level over the minutes needed", () => {
+    expect(xpLabel({ level: 1, xp: 0, need: 15, ratio: 0 })).toBe("0/15 min");
+    expect(xpLabel({ level: 2, xp: 10, need: 20, ratio: 0.5 })).toBe("10/20 min");
+    expect(xpLabel({ level: 3, xp: 12.9, need: 25, ratio: 0.5 })).toBe("12/25 min");
+  });
+
+  it("has nothing to say without a level", () => {
+    expect(xpLabel(undefined)).toBe("");
+    expect(xpLabel(null)).toBe("");
+    expect(xpLabel({ xp: 3 })).toBe("");
+    expect(xpLabel({ xp: 3, need: 0 })).toBe("");
+  });
+});
+
+describe("killKinds", () => {
+  it("always shows the first three foes", () => {
+    expect(killKinds({ gnome: 1, orc: 2, ogre: 3 })).toEqual(["gnome", "orc", "ogre"]);
+    expect(killKinds(undefined)).toEqual(["gnome", "orc", "ogre"]);
+  });
+
+  it("adds the golem only once the stats know it", () => {
+    expect(killKinds({ gnome: 1, golem: 0 })).toEqual(["gnome", "orc", "ogre", "golem"]);
+    expect(killKinds({ golem: 4 })).toContain("golem");
   });
 });

@@ -229,10 +229,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   flex-direction: column;
   align-items: center;
   gap: 0.55em;
+  --hud-w: clamp(232px, 34vmin, 360px);
 }
 .hud-clock-panel {
+  /* the clock and the XP bar share one width, so the bar sits exactly under the clock */
+  width: var(--hud-w);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: clamp(8px, 1.2vmin, 14px);
   padding: 0.45em 0.8em;
 }
@@ -256,7 +260,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .phase-tag[data-phase="short"] { color: var(--green); }
 .phase-tag[data-phase="long"] { color: var(--blue); }
 
-.pips { display: flex; gap: 6px; }
+.pips { display: flex; justify-content: center; gap: 6px; }
 .pips[hidden] { display: none; }
 .pip {
   width: clamp(10px, 1.5vmin, 14px);
@@ -269,6 +273,90 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   background: var(--gold);
   border-color: var(--line);
   box-shadow: inset 0 0 0 1px var(--line), 0 0 8px rgba(255, 207, 92, 0.45);
+}
+
+/* ---------- XP bar (WAVE 4, issue "Level-Up") ---------- */
+
+.hud-xp {
+  width: var(--hud-w);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(6px, 1vmin, 10px);
+  padding: 0.4em 0.65em;
+}
+.hud-xp[hidden] { display: none; }
+.xp-level {
+  font-size: clamp(8px, 1.15vmin, 12px);
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  text-shadow: 1px 1px 0 var(--line);
+}
+.xp-bar {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 72px;
+  height: clamp(9px, 1.35vmin, 12px);
+  background: #0f0b17;
+  border: 2px solid var(--line);
+  box-shadow: inset 0 0 0 1px #3b304d, 0 0 0 2px rgba(74, 59, 98, 0.55);
+  image-rendering: pixelated;
+  overflow: hidden;
+}
+.xp-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  /* gold with a 2 px checker dither, so it reads as pixel art and not as a CSS gradient */
+  background-color: var(--gold);
+  background-image:
+    repeating-conic-gradient(rgba(23, 18, 31, 0.42) 0% 25%, transparent 0% 50%),
+    linear-gradient(#ffe08a, #e0a52e);
+  background-size: 4px 4px, 100% 100%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition: width 0.16s linear;
+}
+.xp-label {
+  font-size: clamp(7px, 1.05vmin, 11px);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- LEVEL UP! banner ---------- */
+
+.levelup {
+  position: absolute;
+  left: 50%;
+  /* below the clock, XP bar and pips at every viewport size; the heroine stays visible underneath */
+  top: clamp(118px, 22vmin, 210px);
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.7em 1.15em;
+  pointer-events: none;
+  background: rgba(20, 15, 30, 0.9);
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 0 3px var(--line), 0 0 22px rgba(255, 207, 92, 0.5), 5px 5px 0 rgba(0, 0, 0, 0.5);
+}
+.levelup.is-open {
+  display: flex;
+  animation: levelup-blink 0.36s steps(1) infinite;
+}
+.levelup-title {
+  font-size: clamp(12px, 2.6vmin, 22px);
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+  text-shadow: 2px 2px 0 var(--line), 0 0 12px rgba(255, 207, 92, 0.65);
+}
+.levelup-level {
+  font-size: clamp(8px, 1.4vmin, 13px);
+  letter-spacing: 0.08em;
+  color: var(--ink);
 }
 
 .hud-kills {
@@ -349,6 +437,11 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   gap: 0.6em;
 }
 
+@keyframes levelup-blink {
+  0%, 58% { opacity: 1; }
+  59%, 100% { opacity: 0.42; }
+}
+
 @keyframes menu-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
@@ -368,6 +461,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   .hud-actions .btn-label { display: none; }
   .btn { padding: 0.55em; }
   .hud-kills { gap: 6px; padding: 0.4em 0.5em; }
+  .hud-top { --hud-w: clamp(210px, 46vmin, 300px); }
+  .hud-xp { gap: 6px; padding: 0.28em 0.5em; }
+  .levelup { top: 116px; padding: 0.5em 0.9em; }
 }
 
 /* Truly cramped: drop the blurbs, the subtitle and the key hint. */
@@ -398,4 +494,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   .pom-ui .menu { animation: none; }
   .pom-ui .btn,
   .pom-ui .card { transition: none; }
+  .xp-fill { transition: none; }
+  .levelup.is-open { animation: none; }
 }
