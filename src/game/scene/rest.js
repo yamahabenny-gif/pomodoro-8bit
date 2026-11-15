@@ -17,7 +17,7 @@
 //   drawBack(frame), drawFront(frame)
 // night: darker sky, more stars (the long break). Lightning in "storm" every 6-15 s, never pure white full screen.
 
-import { createFx, painterFor, hex, mix, rand, clamp } from "../../../vendor/pixelfx/src/core/index.js";
+import { createFx, createFrame, painterFor, hex, mix, rand, clamp } from "../../../vendor/pixelfx/src/core/index.js";
 import * as campfire from "../../../vendor/pixelfx/src/fx/fire/campfire.js";
 
 const W = 320, H = 180, GROUND_Y = 150;
@@ -49,6 +49,7 @@ const PAL = {
 const colorPal = Object.fromEntries(Object.entries(PAL).map(([kind, values]) => [kind,
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Array.isArray(v) ? v.map(hex) : hex(v)])),
 ]));
+const STORM_CACHE = Object.create(null);
 
 function makeBackground(kind, night) {
   const pal = colorPal[kind], stops = SKY_STOPS[kind].map(([t, c]) => [t, hex(c)]);
@@ -264,14 +265,27 @@ export function createRest(kind, { night = false } = {}) {
   let time = 0, ignition = -Infinity, lit = false;
   let nextFlash = (night ? 8 : 6) + rand(251, kind === "storm" ? 1 : 2, night ? 1 : 0) * (night ? 7 : 9);
   let flash = 0;
-  const bgBase = makeBackground(kind, night);
-  const bgFlash = new Uint32Array(W * H);
+  const cacheKey = night ? "night" : "day";
+  const cachedStorm = kind === "storm" ? STORM_CACHE[cacheKey] : null;
+  const bgBase = cachedStorm?.bgBase ?? makeBackground(kind, night);
+  const bgFlash = cachedStorm?.bgFlash ?? new Uint32Array(W * H);
+  if (kind === "storm" && !cachedStorm) {
+    const flashTone = hex("#7473a4");
+    for (let i = 0; i < bgBase.length; i++) bgFlash[i] = mix(bgBase[i], flashTone, 0.38);
+  }
+  const stormStatic = cachedStorm?.stormStatic ?? (kind === "storm" ? createFrame(W, H) : null);
+  if (stormStatic && !cachedStorm) {
+    const staticPainter = painterFor(stormStatic);
+    staticPainter.place(0, 0);
+    drawShelter(staticPainter);
+    STORM_CACHE[cacheKey] = { bgBase, bgFlash, stormStatic };
+  }
+  const rainBack = kind === "storm" ? makeRainDrops(40, 701, 25, 4) : [];
+  const rainFront = kind === "storm" ? makeRainDrops(24, 802, 31, 6) : [];
   const fire = createFx(campfire, { x: fireX, y: GROUND_Y, height: kind === "storm" ? 13 : 17, seed: kind === "storm" ? 35 : 72, light: 0.72 });
 
   function background() {
     if (kind !== "storm" || flash <= 0.01) return bgBase;
-    const k = Math.min(0.52, flash * 0.46);
-    for (let i = 0; i < bgBase.length; i++) bgFlash[i] = mix(bgBase[i], hex("#7473a4"), k);
     return bgFlash;
   }
 
@@ -301,17 +315,18 @@ export function createRest(kind, { night = false } = {}) {
     p.poly([[222, 72], [235, 75], [244, 80], [239, 82], [229, 78]], pal.moss);
     for (const [x, y, h] of [[59, 74, 5], [69, 67, 4], [108, 53, 4], [118, 52, 6], [169, 63, 5], [233, 76, 5]])
       p.line(x, y, x + ((x % 3) - 1), y - h, pal.moss);
-    if (lit) {
-      // Firelight stays in the additive light buffer and only softly warms the underside of the cliff.
-      p.glow(202, 88, 59, pal.glow, 0.15);
-      p.glow(218, 135, 52, pal.ember, 0.1);
-    }
     // Water runs off the broken rock lip in narrow drops.
     for (const [x, len] of [[118, 7], [145, 10], [174, 6], [196, 9], [226, 6], [245, 8]]) {
       const edgeY = 88 + Math.round((x - 118) * 0.11);
       p.dot(x, edgeY, pal.rainNear, 0.75);
       for (let y = edgeY + 2; y < edgeY + len; y++) if ((y + x) % 3 !== 0) p.dot(x, y, pal.rain, 0.58);
     }
+  }
+
+  function drawShelterLight(p) {
+    // Firelight stays in the additive light buffer and softly warms the underside of the cliff.
+    p.glow(202, 88, 59, pal.glow, 0.15);
+    p.glow(218, 135, 52, pal.ember, 0.1);
   }
 
   function drawLakeBank(p) {
@@ -380,21 +395,30 @@ export function createRest(kind, { night = false } = {}) {
 
   function drawRain(p, front) {
     if (kind !== "storm") return;
-    for (let i = 0; i < (front ? 48 : 80); i++) {
-      const seed = front ? 800 : 700, phase = (time * (front ? 31 : 25) + rand(seed, i, 1) * 180) % 180;
-      const x = (Math.floor(rand(seed, i, 2) * W) - Math.floor(phase * 0.22) + W) % W;
+    const drops = front ? rainFront : rainBack;
+    for (const drop of drops) {
+      const phase = (time * drop.speed + drop.offset) % 180;
+      const x = (drop.x - Math.floor(phase * 0.22) + W) % W;
       const y = phase - 16;
       if (x >= 108 && x <= 245 && y >= 82 && y < 141) continue;
       if (front && y < 126) continue;
       if (!front && y > 136) continue;
       const c = front ? pal.rainNear : pal.rain;
-      p.line(x, y, x - 2, y + (front ? 5 : 4), c, front ? 0.78 : 0.48);
+      p.line(x, y, x - 2, y + (front ? 4 : 3), c, front ? 0.72 : 0.42);
     }
     // Small crowns in the puddle bands suggest drops hitting the wet ground.
     if (front) for (let i = 0; i < 5; i++) {
       const x = (i * 73 + Math.floor(time * 17) % W) % W, y = 158 + (i % 2) * 5;
       p.line(x - 2, y, x, y - 1, pal.rainNear, 0.6); p.line(x, y - 1, x + 2, y, pal.rainNear, 0.6);
     }
+  }
+
+  function makeRainDrops(count, seed, speed, offset) {
+    return Array.from({ length: count }, (_, i) => ({
+      x: Math.floor(rand(seed, i, 2) * W),
+      offset: rand(seed, i, 1) * 180,
+      speed: speed * (0.86 + rand(seed, i, 3) * 0.28),
+    }));
   }
 
   function drawLakeFlies(p, front) {
@@ -468,8 +492,9 @@ export function createRest(kind, { night = false } = {}) {
     drawBack(frame) {
       const p = painterFor(frame); p.place(0, 0);
       if (kind === "storm") {
+        frame.color.set(stormStatic.color);
         drawLightning(p);
-        drawShelter(p);
+        if (lit) drawShelterLight(p);
         drawRain(p, false);
       } else {
         drawLakeBank(p);
@@ -498,3 +523,7 @@ export function createRest(kind, { night = false } = {}) {
     },
   };
 }
+
+// Bake both storm variants while the scene module loads, before a rest phase enters the animation loop.
+createRest("storm");
+createRest("storm", { night: true });

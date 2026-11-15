@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { createFrame } from "pixelfx/core/index.js";
+import { describe, it, expect, vi } from "vitest";
+import { createFrame, Painter } from "pixelfx/core/index.js";
 import { createRest, REST_KINDS } from "../src/game/scene/rest.js";
 import { W, H } from "../src/engine/stage.js";
 
@@ -37,6 +37,25 @@ describe("rest scenes", () => {
     expect(rest.lit).toBe(true);
     rest.ignite();
     expect(rest.lit).toBe(true);
+  });
+
+  it("bakes the storm shelter before the first draw and reuses its static frame", () => {
+    const polygon = vi.spyOn(Painter.prototype, "poly");
+    try {
+      const callsBefore = polygon.mock.calls.length, rest = createRest("storm");
+      expect(polygon).toHaveBeenCalledTimes(callsBefore);
+      const back = createFrame(W, H), front = createFrame(W, H);
+      rest.drawBack(back);
+      expect(back.color[100 * W + 50]).not.toBe(0); // cliff wall is already in the warmed frame
+      for (let i = 0; i < 12; i++) {
+        rest.update(1 / 60);
+        rest.drawBack(back);
+        rest.drawFront(front);
+      }
+      expect(polygon).toHaveBeenCalledTimes(callsBefore);
+    } finally {
+      polygon.mockRestore();
+    }
   });
 
   it("flashes the storm sky on a 6–15 second rhythm, less often at night", () => {
